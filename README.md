@@ -14,13 +14,9 @@ poetry
 poetry install
 ```
 
-### Run
-Starts API on port 8080 locally.
-
-```bash
-poetry run dev
+### Test (Python) with sample input
+```python
+from mpm_input_preprocessing.common import preprocessing
+preprocessing.test()
 ```
-
-### Test
-Go to http://localhost:8080/docs#/
 
