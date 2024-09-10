@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     cdr_endpoint_url: str = "http://192.168.1.196:8333"
 
     api_prefix: str ="/v1"
+
+    registration_secret: str = "test"
     
 
 app_settings = Settings()

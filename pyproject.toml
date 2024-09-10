@@ -29,6 +29,7 @@ pydantic-settings = "^2.1.0"
 httptools = "^0.6.1"
 
 [tool.poetry.scripts]
+dev = "dev.run:main"
 format = "dev.script:format"
 lint = "dev.script:lint"
 
