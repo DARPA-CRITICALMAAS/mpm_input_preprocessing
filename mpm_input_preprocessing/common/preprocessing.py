@@ -26,6 +26,7 @@ def preprocess(cma: CriticalMineralAssessment, evidence_layers: List[CreateProce
 def test():
     sample_cma = {
         "crs": "ESRI:102008",
+        "creation_date": "2024-09-11T20:06:52.487891",
         "mineral": "zinc",
         "download_url": "https://s3.amazonaws.com/public.cdr.land/prospectivity/cmas/ESRI:102008_a74810566af8455a0647d0557d65564c6e040f9ed0e7ce1b44e522e21be61dfd__res0_500_res1_500_zinc/template_raster.tif",
         "cma_id": "ESRI:102008_a74810566af8455a0647d0557d65564c6e040f9ed0e7ce1b44e522e21be61dfd__res0_500_res1_500_zinc",
@@ -1432,7 +1433,8 @@ def test():
                                     mineral=sample_cma["mineral"],
                                     extent=sample_cma["extent"],
                                     resolution=sample_cma["resolution"],
-                                    description=sample_cma["description"]
+                                    description=sample_cma["description"],
+                                    creation_date=sample_cma["creation_date"]
                                     )
 
     evidence_layer_objects = [CreateProcessDataLayer(**x) for x in evidence_layers]
