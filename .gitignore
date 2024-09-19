@@ -2,3 +2,10 @@
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
+
+# Ignore specific JetBrains directories
+.idea/
+
+# Ignore specific user-defined directories
+local/
+
