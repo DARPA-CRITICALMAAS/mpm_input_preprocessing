@@ -44,8 +44,9 @@ def read_raster_band(raster: rasterio.io.DatasetReader, band: int = 1, **kwargs)
         **kwargs: Additional keyword arguments to update the metadata of the raster.
 
     Returns:
-        np.ndarray: A 2-dimensional raster array read from the input raster.
-        Dict: The (updated) metadata of the raster read from the input raster.
+        Tuple of np.ndarray, Dict: The raster array and its updated metadata.
+            - np.ndarray: A 2-dimensional raster array read from the input raster.
+            - Dict: The (updated) metadata of the raster read from the input raster.
     """
     out_array = raster.read(band)
     out_meta = raster.meta.copy()
@@ -58,9 +59,35 @@ def read_raster_band(raster: rasterio.io.DatasetReader, band: int = 1, **kwargs)
     return out_array, out_meta
 
 
+def set_minimum_dtype(
+    src_array: np.ndarray,
+    src_meta: Dict
+) -> Tuple[np.ndarray, Dict]:
+    """
+    Determine the minimum data type for the raster array.
+
+    Args:
+        src_array: The raster array to determine the minimum data type for.
+        src_meta: The metadata dictionary for the raster.
+
+    Returns:
+        Tuple of np.ndarray, Dict: The raster array and its metadata.
+            - np.ndarray: The raster array with the minimum data type determined.
+            - Dict: The updated metadata dictionary with the minimum data type set.
+    """
+    dtype = rasterio.dtypes.get_minimum_dtype(src_array)
+
+    out_meta = src_meta.copy()
+    out_meta.update(
+        dtype=dtype
+    )
+
+    return src_array.astype(dtype), out_meta
+
+
 def save_raster(
-    raster_array: np.ndarray,
-    raster_meta: Dict,
+    src_array: np.ndarray,
+    src_meta: Dict,
     output_path: str,
     **kwargs
 ):
@@ -75,18 +102,18 @@ def save_raster(
     Nodata value in the kwargs argument will overwrite the automatically determined nodata value.
 
     Args:
-        raster_array: The raster array to be saved.
-        raster_meta: The metadata dictionary for the raster.
+        src_array: The raster array to be saved.
+        src_meta: The metadata dictionary for the raster.
         output_path: The file path where the raster will be saved.
         **kwargs: Additional keyword arguments to update the metadata of the raster.
 
     Returns:
         None
     """
-    raster_array = np.expand_dims(raster_array, axis=0) if raster_array.ndim == 2 else raster_array
+    raster_array = np.expand_dims(src_array, axis=0) if src_array.ndim == 2 else src_array
     dtype = rasterio.dtypes.get_minimum_dtype(raster_array)
 
-    raster_meta = raster_meta.copy()
+    raster_meta = src_meta.copy()
     raster_meta.update(dtype=dtype)
     raster_meta.update(kwargs)
 

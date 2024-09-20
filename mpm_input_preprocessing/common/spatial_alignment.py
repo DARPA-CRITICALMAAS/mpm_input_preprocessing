@@ -9,7 +9,7 @@ from typing import Union, Tuple, Optional, Dict
 
 
 def raster_coregistration(
-    source: Tuple[np.ndarray, Dict],
+    src: Tuple[np.ndarray, Dict],
     template: Tuple[np.ndarray, Dict],
     resampling: Optional[Resampling] = None,
 ) -> Tuple[np.ndarray, Dict]:
@@ -17,7 +17,7 @@ def raster_coregistration(
     Coregistering a source raster to match the spatial properties of a template raster.
 
     Args:
-        source: A tuple containing the source raster array and its metadata.
+        src: A tuple containing the source raster array and its metadata.
             - np.ndarray: The source raster data array.
             - Dict: The source raster metadata.
         template: A tuple containing the template raster array and its metadata.
@@ -30,7 +30,7 @@ def raster_coregistration(
         np.ndarray: The 2-dimensional coregistered raster data array.
         Dict: The updated metadata for the coregistered raster.
     """
-    src_array, src_meta = source
+    src_array, src_meta = src
     template_array, template_meta = template
 
     dst_array = np.empty((src_meta["count"], template_meta["height"], template_meta["width"]))
