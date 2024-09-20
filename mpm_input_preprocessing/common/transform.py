@@ -1,4 +1,3 @@
-import rasterio
 import numpy as np
 from typing import Literal, Dict, Tuple
 from mpm_input_preprocessing.common import utils
