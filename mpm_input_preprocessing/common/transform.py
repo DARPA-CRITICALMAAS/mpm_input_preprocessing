@@ -31,9 +31,27 @@ def _transform_sqrt(
     return np.sqrt(src_array)
 
 
+def _transform_minmax(
+    src_array: np.ndarray,
+):
+    array_min = np.nanmin(src_array)
+    array_max = np.nanmax(src_array)
+
+    return (src_array - array_min) / (array_max - array_min)
+
+
+def _transform_std(
+    src_array: np.ndarray,
+):
+    array_mean = np.nanmean(src_array)
+    array_sd = np.nanstd(src_array)
+
+    return (src_array - array_mean) / array_sd
+
+
 def transform(
     src: Tuple[np.ndarray, Dict],
-    method: Literal["log", "log1p", "abs", "sqrt"]
+    method: Literal["log", "log1p", "abs", "sqrt", "minmax", "std"]
 ) -> Tuple[np.ndarray, Dict]:
     """
     Apply a specified mathematical transformation to a source array.
@@ -47,6 +65,11 @@ def transform(
             - "log1p": Apply natural logarithm to (1 + array).
             - "abs": Apply absolute value to the array.
             - "sqrt": Apply square root to the array.
+            - "minmax": Normalize the array to the range [0, 1].
+            - "std": Normalize the array to have zero mean and unit variance.
+
+    Raises:
+        ValueError: If the specified transformation method is not supported.
 
     Returns:
         A tuple containing the transformed array and its updated metadata.
@@ -64,6 +87,10 @@ def transform(
         out_array = _transform_abs(src_array)
     elif method == "sqrt":
         out_array = _transform_sqrt(src_array)
+    elif method == "minmax":
+        out_array = _transform_minmax(src_array)
+    elif method == "std":
+        out_array = _transform_std(src_array)
     else:
         raise ValueError(f"Invalid transform method: {method}")
 

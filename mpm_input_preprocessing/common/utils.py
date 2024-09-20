@@ -3,7 +3,7 @@ import io
 import ssl
 import rasterio
 import numpy as np
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 
 def download_file_from_cdr(download_url: str) -> io.BytesIO:
