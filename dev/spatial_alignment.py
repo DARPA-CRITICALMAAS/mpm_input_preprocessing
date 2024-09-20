@@ -5,25 +5,36 @@ import rasterio.coords
 import rasterio.windows
 from rasterio import warp
 from rasterio.enums import Resampling
-from typing import Union, Tuple, Optional
-
+from typing import Union, Tuple, Optional, Dict
 
 
 def raster_coregistration(
-    src_raster: rasterio.io.DatasetReader,
-    template_raster: rasterio.io.DatasetReader,
+    source: Tuple[np.ndarray, Dict],
+    template: Tuple[np.ndarray, Dict],
     resampling: Optional[Resampling] = None,
-) -> Tuple[np.ndarray, dict]:
+) -> Tuple[np.ndarray, Dict]:
+    """
+    Coregistering a source raster to match the spatial properties of a template raster.
 
-    dst_crs = template_raster.crs
-    dst_width = template_raster.width
-    dst_height = template_raster.height
-    dst_transform = template_raster.transform
+    Args:
+        source: A tuple containing the source raster array and its metadata.
+            - np.ndarray: The source raster data array.
+            - Dict: The source raster metadata.
+        template: A tuple containing the template raster array and its metadata.
+            - np.ndarray: The template raster data array.
+            - Dict: The template raster metadata.
+        resampling: The resampling method to use. If None, it defaults to nearest for integer data types
+            and bilinear for floating-point data types.
 
-    dst_array = np.empty((template_raster.count, dst_height, dst_width))
-    dst_array.fill(template_raster.nodata)
+    Returns:
+        np.ndarray: The 2-dimensional coregistered raster data array.
+        Dict: The updated metadata for the coregistered raster.
+    """
+    src_array, src_meta = source
+    template_array, template_meta = template
 
-    src_array = src_raster.read()
+    dst_array = np.empty((src_meta["count"], template_meta["height"], template_meta["width"]))
+    dst_array.fill(src_meta["nodata"])
 
     if resampling is None:
         if np.issubdtype(src_array.dtype, np.integer):
@@ -33,20 +44,20 @@ def raster_coregistration(
 
     out_array = warp.reproject(
         source=src_array,
-        src_crs=src_raster.crs,
-        src_transform=src_raster.transform,
-        src_nodata=src_raster.nodata,
+        src_crs=src_meta["crs"],
+        src_transform=src_meta["transform"],
+        src_nodata=src_meta["nodata"],
         destination=dst_array,
-        dst_crs=dst_crs,
-        dst_transform=dst_transform,
-        dst_nodata=template_raster.nodata,
+        dst_crs=template_meta["crs"],
+        dst_transform=template_meta["transform"],
+        dst_nodata=src_meta["nodata"],
         resampling=resampling,
     )[0]
 
-    template_array = template_raster.read()
-    out_array = np.where(
-        template_array == template_raster.nodata, template_raster.nodata, out_array
+    out_meta = template_meta.copy()
+    out_meta.update(
+        dtype=src_meta["dtype"],
+        nodata=src_meta["nodata"],
     )
 
-    out_meta = template_raster.meta.copy()
-    return out_array, out_meta
+    return out_array.squeeze(), out_meta
