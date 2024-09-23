@@ -9,3 +9,4 @@ __pycache__/
 # Ignore specific user-defined directories
 local/
 
+sync.ffs_db

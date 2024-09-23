@@ -5,47 +5,55 @@ from mpm_input_preprocessing.common import utils
 
 def _transform_log(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     src_array = np.where(src_array > 0, src_array, np.nan)
     return np.log(src_array)
 
 
 def _transform_log1p(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     src_array = np.where(src_array < 0, np.nan, src_array)
     return np.log1p(src_array)
 
 
 def _transform_abs(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     return np.abs(src_array)
 
 
 def _transform_sqrt(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     src_array = np.where(src_array < 0, np.nan, src_array)
     return np.sqrt(src_array)
 
 
 def _transform_minmax(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     array_min = np.nanmin(src_array)
     array_max = np.nanmax(src_array)
 
-    return (src_array - array_min) / (array_max - array_min)
+    # Pass source array to zero if min and max are the same, else transform
+    if array_min == array_max:
+        return src_array
+    else:
+        return (src_array - array_min) / (array_max - array_min)
 
 
 def _transform_std(
     src_array: np.ndarray,
-):
+) -> np.ndarray:
     array_mean = np.nanmean(src_array)
     array_sd = np.nanstd(src_array)
 
-    return (src_array - array_mean) / array_sd
+    # Pass source array to zero if standard deviation is zero, else transform
+    if array_sd == 0:
+        return src_array
+    else:
+        return (src_array - array_mean) / array_sd
 
 
 def transform(
@@ -67,14 +75,14 @@ def transform(
             - "minmax": Normalize the array to the range [0, 1].
             - "std": Normalize the array to have zero mean and unit variance.
 
-    Raises:
-        ValueError: If the specified transformation method is not supported.
-
     Returns:
         A tuple containing the transformed array and its updated metadata.
             - out_array: The transformed array.
             - out_meta: Updated metadata for the transformed array.
-        """
+
+    Raises:
+        ValueError: If the specified transformation method is not supported.
+    """
     src_array, src_meta = src
     src_array = np.where(src_array == src_meta["nodata"], np.nan, src_array)
 

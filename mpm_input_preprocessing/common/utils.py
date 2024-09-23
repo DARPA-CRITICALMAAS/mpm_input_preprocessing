@@ -3,7 +3,8 @@ import io
 import ssl
 import rasterio
 import numpy as np
-from typing import Dict, Tuple
+import geopandas as gpd
+from typing import Dict, Tuple, Union
 
 
 def download_file_from_cdr(download_url: str) -> io.BytesIO:
@@ -59,6 +60,15 @@ def read_raster_band(raster: rasterio.io.DatasetReader, band: int = 1, **kwargs)
     return out_array, out_meta
 
 
+def convert_float_to_int_value(scalar: Union[int, float]) -> Union[int, float]:
+    initial_dtype = np.min_scalar_type(scalar)
+
+    if np.issubdtype(initial_dtype, np.floating) and scalar.is_integer():
+        scalar = int(scalar)
+
+    return scalar
+
+
 def set_minimum_dtype(
     src_array: np.ndarray,
     src_meta: Dict
@@ -75,7 +85,12 @@ def set_minimum_dtype(
             - np.ndarray: The raster array with the minimum data type determined.
             - Dict: The updated metadata dictionary with the minimum data type set.
     """
-    dtype = rasterio.dtypes.get_minimum_dtype(src_array)
+    nodata = src_meta["nodata"]
+    nodata = convert_float_to_int_value(nodata)
+
+    dtype_src = rasterio.dtypes.get_minimum_dtype(src_array)
+    dtype_nodata = rasterio.dtypes.get_minimum_dtype(nodata)
+    dtype = np.promote_types(dtype_src, dtype_nodata)
 
     out_meta = src_meta.copy()
     out_meta.update(
@@ -110,14 +125,40 @@ def save_raster(
     Returns:
         None
     """
-    raster_array = np.expand_dims(src_array, axis=0) if src_array.ndim == 2 else src_array
-    dtype = rasterio.dtypes.get_minimum_dtype(raster_array)
+    raster_array, raster_meta = set_minimum_dtype(src_array, src_meta)
+    raster_array = np.expand_dims(raster_array, axis=0) if raster_array.ndim == 2 else raster_array
 
-    raster_meta = src_meta.copy()
-    raster_meta.update(dtype=dtype)
     raster_meta.update(kwargs)
-
     with rasterio.open(output_path, "w", **raster_meta) as dst:
         for i in range(0, raster_meta["count"]):
             dst.write(raster_array[i], i + 1)
         dst.close()
+
+
+def get_geometry_type(src: gpd.GeoDataFrame) -> str:
+    """
+    Determine the geometry type of a GeoDataFrame.
+
+    Checks the geometry type of all geometries in the provided GeoDataFrame and returns a string
+    indicating the type of geometry. It supports 'Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon',
+    and 'MultiPolygon'.
+
+    Args:
+        src: The GeoDataFrame whose geometry type is to be determined.
+
+    Returns:
+        geometry_type: A string indicating the geometry type of the GeoDataFrame.
+
+    Raises:
+        ValueError: If the GeoDataFrame contains mixed or unsupported geometry types.
+    """
+    if src.geometry.geom_type.isin(["Point", "MultiPoint"]).all():
+        geometry_type = "point"
+    elif src.geometry.geom_type.isin(["LineString", "MultiLineString"]).all():
+        geometry_type = "line"
+    elif src.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+        geometry_type = "polygon"
+    else:
+        raise ValueError("The GeoDataFrame contains mixed or unsupported geometry types.")
+
+    return geometry_type
