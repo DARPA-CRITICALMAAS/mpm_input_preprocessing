@@ -1,6 +1,13 @@
 import logging
+import os
+
 from logging import Logger
 from typing import List
+from tqdm import tqdm
+from pathlib import Path
+import numpy as np
+
+from mpm_input_preprocessing.common.utils_cdr import create_aoi_geopkg, download_reference_layer, download_evidence_layers, preprocess_evidence_layers
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -8,19 +15,53 @@ from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, C
 
 from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 
-def preprocess(cma: CriticalMineralAssessment, evidence_layers: List[CreateProcessDataLayer]):
-    print("Start preprocess...")
 
-    print(cma)
-    print(evidence_layers)
-
+def preprocess(
+    cma: CriticalMineralAssessment,
+    evidence_layers: List[CreateProcessDataLayer]
+):
     # SRI/Beak your code here.
     """
-    Iterate over a CMA's evidence_layers and produce preprocessed layers (raw raster + SaveProcessedDataLayer metadata object) 
+    Iterate over a CMA's evidence_layers and produce preprocessed layers (raw raster + SaveProcessedDataLayer metadata object)
     for each one given the transform_methods supplied.
 
     Jataware to hook up sending preprocessed layers (raw raster + SaveProcessedDataLayer metadata object) to CDR once above is complete.
     """
+
+    print("Start preprocess...")
+
+    print(cma)
+
+    # create directory where to save the processed layers
+    data_dir = Path("./data") / Path(cma.cma_id)
+    os.makedirs(data_dir, exist_ok=True)
+
+    # create aoi geopackage
+    print("Generating AOI geopackage.")
+    aoi_geopkg_path = create_aoi_geopkg(cma, data_dir)
+
+    # download reference layer
+    print("Downloading reference layer.")
+    reference_layer_path = download_reference_layer(cma, data_dir)
+
+    print(evidence_layers)
+
+    # download evidence layers
+    print("Downloading evidence layers.")
+    evidence_layer_paths = download_evidence_layers(evidence_layers, data_dir)
+
+    # preprocess evidence layers
+    print("Preprocessing evidence layers.")
+    preprocess_evidence_layers(
+        evidence_layer_paths,
+        aoi_geopkg_path,
+        reference_layer_path,
+        dst_crs=cma.crs,
+        dst_nodata=np.nan,
+        dst_res_x=cma.resolution[0],
+        dst_res_y=cma.resolution[1]
+    )
+
 
 
 def test():
@@ -830,7 +871,7 @@ def test():
         "description": "Central-Eastern US Mississippi Valley Type Zinc",
         "cogs": []
         }
-    
+
     evidence_layers = [
         {
           "transform_methods": [
@@ -1427,9 +1468,9 @@ def test():
         }
     ]
 
-    cma = CriticalMineralAssessment(cma_id=sample_cma["cma_id"], 
+    cma = CriticalMineralAssessment(cma_id=sample_cma["cma_id"],
                                     download_url=sample_cma["download_url"],
-                                    crs=sample_cma["crs"], 
+                                    crs=sample_cma["crs"],
                                     mineral=sample_cma["mineral"],
                                     extent=sample_cma["extent"],
                                     resolution=sample_cma["resolution"],
