@@ -4,7 +4,7 @@ import ssl
 import rasterio
 import numpy as np
 import geopandas as gpd
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, Optional
 
 
 def download_file_from_cdr(download_url: str) -> io.BytesIO:
@@ -162,3 +162,38 @@ def get_geometry_type(src: gpd.GeoDataFrame) -> str:
         raise ValueError("The GeoDataFrame contains mixed or unsupported geometry types.")
 
     return geometry_type
+
+
+def prepare_geodataframe_for_rasterization(
+    src: gpd.GeoDataFrame,
+    template: Tuple[np.ndarray, dict],
+    query: Optional[str] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Prepare a GeoDataFrame for rasterization.
+
+    Ensure that the input GeoDataFrame is not empty, optionally filters it based on a query,
+    and reprojects it to the coordinate reference system (CRS) of the provided template raster.
+
+    Args:
+        src: The input GeoDataFrame to be prepared for rasterization.
+        template: A tuple containing the template array and its metadata.
+            - template_array: The array representing the template raster.
+            - template_meta: The metadata dictionary for the template raster.
+        query: An optional query string to filter the GeoDataFrame.
+
+    Returns:
+        gpd.GeoDataFrame: The queried and reprojected GeoDataFrame
+
+    Raises:
+        AssertionError: If the input GeoDataFrame is empty.
+        AssertionError: If the queried GeoDataFrame is empty.
+    """
+    _, template_meta = template
+    assert not src.empty, "Input GeoDataFrame is empty."
+
+    if query is not None:
+        src = src.query(query)
+        assert not src.empty, "Query returned empty GeoDataFrame."
+
+    return src.to_crs(crs=template_meta["crs"], inplace=False)
