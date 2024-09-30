@@ -53,6 +53,7 @@ def preprocess(
     # preprocess evidence layers
     print("Preprocessing evidence layers.")
     preprocess_evidence_layers(
+        evidence_layers,
         evidence_layer_paths,
         aoi_geopkg_path,
         reference_layer_path,

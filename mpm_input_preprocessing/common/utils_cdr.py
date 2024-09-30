@@ -80,16 +80,17 @@ def download_evidence_layers(
 
 
 def preprocess_evidence_layers(
+    evidence_layers,
     layers: Path,
     aoi: Path,
     reference_layer_path: Path,
     dst_crs: str,
     dst_nodata: Union[None, float],
     dst_res_x: int,
-    dst_res_y: int
+    dst_res_y: int,
 ) -> List[Path]:
     pev_lyr_paths = []
-    for layer in tqdm(layers):
+    for idx, layer in tqdm(enumerate(layers)):
         if layer.suffix == ".tif":
             pev_lyr_path = preprocess_raster(
                 layer,
@@ -98,7 +99,8 @@ def preprocess_evidence_layers(
                 dst_crs,
                 dst_nodata,
                 dst_res_x,
-                dst_res_y
+                dst_res_y,
+                transform_methods=evidence_layers[idx].transform_methods
             )
         elif layer.suffix == ".zip":
             pev_lyr_path = preprocess_vector(
@@ -108,7 +110,8 @@ def preprocess_evidence_layers(
                 dst_crs,
                 dst_nodata,
                 dst_res_x,
-                dst_res_y
+                dst_res_y,
+                transform_methods=evidence_layers[idx].transform_methods
             )
         pev_lyr_paths.append(pev_lyr_path)
     return pev_lyr_paths

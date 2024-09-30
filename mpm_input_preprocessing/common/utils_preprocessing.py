@@ -11,8 +11,10 @@ from rasterio.warp import reproject
 from rasterio.fill import fillnodata
 from rasterio.mask import mask
 from rasterio.features import rasterize
-from typing import Literal, List, Union
+from typing import List, Dict, Optional, Union, Literal
 from pathlib import Path
+
+from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute, ImputeMethod
 
 def preprocess_raster(
     layer: Path,
@@ -22,6 +24,7 @@ def preprocess_raster(
     dst_nodata: Union[None, float],
     dst_res_x: float,
     dst_res_y: float,
+    transform_methods: List,
     default_crs: str = 'EPSG:4326',
     default_nodata: float = np.nan,
     warp_resampling_method=rasterio.warp.Resampling.bilinear,
@@ -45,6 +48,7 @@ def preprocess_raster(
     - dst_crs (str): The destination coordinate reference system.
     - dst_nodata (float): NoData value for the output raster.
     - dst_res_x, dst_res_y (float): Resolution of the output raster.
+    - transform_methods (List): List of preprocessing methods to apply.
     - default_crs (str): The default CRS to use if the raster does not have a CRS (default is 'EPSG:4326').
     - default_nodata (float): The default NoData value to use if the raster does not have a NoData value (default is np.nan).
     - warp_resampling_method (rasterio.warp.Resampling): Resampling method to use for warping.
@@ -58,6 +62,24 @@ def preprocess_raster(
     - scale_min_value (float): Minimum value for scaling, only used if scaling_type is 'minmax' (default is 0.0).
     - scale_max_value (float): Maximum value for scaling, only used if scaling_type is 'minmax' (default is 1.0).
     """
+    # get UI specified preprocessing methods
+    transform_methods_dict = {
+        'transform': None,
+        'impute_method': None,
+        'impute_window_size': None,
+        'scaling': 'standard'
+    }
+    for method in transform_methods:
+        if isinstance(method, TransformMethod):
+            transform_methods_dict['transform'] = method.value
+        elif isinstance(method, Impute):
+            transform_methods_dict['impute_method'] = method.impute_method.value
+            transform_methods_dict['impute_window_size'] = method.window_size
+        elif isinstance(method, ScalingType):
+            transform_methods_dict['scaling'] = method.value
+        else:
+            raise ValueError("Unknown method")
+
     formatted_file = layer.parent / (layer.stem +"_formatted" + layer.suffix)
     warped_file = layer.parent / (layer.stem +"_warped" + layer.suffix)
     imputed_file = layer.parent / (layer.stem +"_imputed" + layer.suffix)
@@ -65,7 +87,12 @@ def preprocess_raster(
     aligned_file = layer.parent / (layer.stem +"_aligned" + layer.suffix)
     dilated_file = layer.parent / (layer.stem +"_dilated" + layer.suffix)
     olr_file = layer.parent / (layer.stem +"_olr" + layer.suffix)
-    scaled_file = layer.parent / (layer.stem +"_processed" + layer.suffix)
+    if transform_methods_dict['transform']:
+        scaled_file = layer.parent / (layer.stem + "_scaled" + layer.suffix)
+        transform_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
+    else:
+        scaled_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
+
     format_nodata_crs(
         src_raster_path=layer,
         dst_raster_path=formatted_file,
@@ -118,7 +145,15 @@ def preprocess_raster(
         min_value=scale_min_value,
         max_value=scale_max_value
     )
-    return scaled_file
+    if transform_methods_dict['transform']:
+        transform_raster(
+            src_raster_path=scaled_file,
+            dst_raster_path=transform_file,
+            method=transform_methods_dict['transform']
+        )
+        return transform_file
+    else:
+        return scaled_file
 
 
 def preprocess_vector(
@@ -129,6 +164,7 @@ def preprocess_vector(
     dst_nodata: Union[None, float],
     dst_res_x: float,
     dst_res_y: float,
+    transform_methods: List,
     burn_value: float = 1.0,
     fill_value: float = np.nan,
     align_resampling_method=rasterio.warp.Resampling.bilinear,
@@ -149,6 +185,7 @@ def preprocess_vector(
     - dst_crs (str): The destination coordinate reference system.
     - dst_nodata (float): NoData value for the output raster.
     - dst_res_x, dst_res_y (float): Resolution of the output raster.
+    - transform_methods (List): List of preprocessing methods to apply.
     - burn_value (float): Value to burn in the raster (default is 1.0).
     - fill_value (float): Value to fill the raster with (default is np.nan).
     - align_resampling_method (rasterio.warp.Resampling): Resampling method to use for aligning.
@@ -159,6 +196,24 @@ def preprocess_vector(
     - scale_min_value (float): Minimum value for scaling, only used if scaling_type is 'minmax' (default is 0.0).
     - scale_max_value (float): Maximum value for scaling, only used if scaling_type is 'minmax' (default is 1.0).
     """
+    # get UI specified preprocessing methods
+    transform_methods_dict = {
+        'transform': None,
+        'impute_method': None,
+        'impute_window_size': None,
+        'scaling': 'standard'
+    }
+    for method in transform_methods:
+        if isinstance(method, TransformMethod):
+            transform_methods_dict['transform'] = method.value
+        elif isinstance(method, Impute):
+            transform_methods_dict['impute_method'] = method.impute_method.value
+            transform_methods_dict['impute_window_size'] = method.window_size
+        elif isinstance(method, ScalingType):
+            transform_methods_dict['scaling'] = method.value
+        else:
+            raise ValueError("Unknown method")
+
     # gets vector file path
     shp_file = find_shapefiles(layer.parent / layer.stem)
     if len(shp_file) > 1 or len(shp_file) == 0: raise Exception(f"Cannot process vector file {layer}.")
@@ -171,7 +226,12 @@ def preprocess_vector(
     aligned_file = rasterized_file.parent / (rasterized_file.stem +"_aligned" + rasterized_file.suffix)
     dilated_file = rasterized_file.parent / (rasterized_file.stem +"_dilated" + rasterized_file.suffix)
     olr_file = rasterized_file.parent / (rasterized_file.stem +"_olr" + rasterized_file.suffix)
-    scaled_file = rasterized_file.parent / (rasterized_file.stem +"_processed" + rasterized_file.suffix)
+    if transform_methods_dict['transform']:
+        scaled_file = layer.parent / (layer.stem + "_scaled" + layer.suffix)
+        transform_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
+    else:
+        scaled_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
+
     warp_vector(
         src_vector_path = shp_file,
         dst_vector_path = warped_shp_file,
@@ -221,7 +281,15 @@ def preprocess_vector(
         min_value=scale_min_value,
         max_value=scale_max_value
     )
-    return scaled_file
+    if transform_methods_dict['transform']:
+        transform_raster(
+            src_raster_path=scaled_file,
+            dst_raster_path=transform_file,
+            method=transform_methods_dict['transform']
+        )
+        return transform_file
+    else:
+        return scaled_file
 
 
 ### Processing Functions
@@ -244,10 +312,11 @@ def format_nodata_crs(
         raster_data = src.read(1)
         nodata_value = src.nodata
         CRS = src.crs if src.crs is not None else default_crs
-        if nodata_value is not None:
-            raster_data = np.where(raster_data == nodata_value, default_nodata, raster_data)
-        else:
-            raise Exception(f"Raster no data value is None: {src_raster_path}")
+        # if nodata_value is not None:
+        #     raster_data = np.where(raster_data == nodata_value, default_nodata, raster_data)
+        # else:
+        #     raise Exception(f"Raster no data value is None: {src_raster_path}")
+        raster_data = np.where(raster_data == nodata_value, default_nodata, raster_data)
 
         metadata = src.meta
         metadata.update(dtype=rasterio.float32, nodata=default_nodata, crs=CRS)
@@ -362,7 +431,7 @@ def clip_raster(
     """
     # Read the shapefile
     shapes = gpd.read_file(aoi_path)
-    shapes['geometry'] = shapes['geometry'].simplify(tolerance=0.1)
+    # shapes['geometry'] = shapes['geometry'].simplify(tolerance=0.1)
 
     # Open the raster file
     with rasterio.open(src_raster_path) as src:
@@ -534,6 +603,7 @@ def vector_to_raster(
     burn_value: float = 1.0,
     fill_value: float = None,
     dst_nodata: float = np.nan,
+    aoi_path: Optional[Union[Path, None]] = None
 ) -> None:
     """
     Rasterize a vector file to a raster with specific resolution.
@@ -550,8 +620,11 @@ def vector_to_raster(
     # Read the vector file
     gdf = gpd.read_file(src_vector_path)
 
+    if aoi_path:
+        aoi_gdf = gpd.read_file(aoi_path)
+
     # Get bounds and calculate transform
-    minx, miny, maxx, maxy = gdf.total_bounds
+    minx, miny, maxx, maxy = aoi_gdf.total_bounds if aoi_path else gdf.total_bounds
     width = int((maxx - minx) / dst_res_x)
     height = int((maxy - miny) / dst_res_y)
     transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
@@ -627,7 +700,7 @@ def find_shapefiles(directory) -> List[Path]:
 def transform_raster(
     src_raster_path,
     dst_raster_path,
-    method: str = "log"
+    method: str = Literal["log","abs","sqrt"]
 ) -> None:
     """
     Apply a transformation function to a raster image.
