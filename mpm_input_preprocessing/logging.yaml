@@ -70,11 +70,6 @@ loggers:
     propagate: False
     handlers:
       - console
-  httpcore.connection:
-    level: INFO
-    propagate: False
-    handlers:
-      - console
   httpx:
     level: INFO
     propagate: False

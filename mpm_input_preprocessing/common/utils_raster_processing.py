@@ -1,20 +1,21 @@
 import numpy as np
-import rasterio
-import rasterio.crs
-import rasterio.coords
-import rasterio.windows
 from rasterio import warp
 from rasterio.enums import Resampling
-from typing import Union, Tuple, Optional, Dict
+from typing import Optional, Tuple, Dict
+
+from mpm_input_preprocessing.common.utils_helper import (
+    _cast_array_to_minimum_dtype
+)
 
 
-def raster_coregistration(
+
+def coregistration(
     src: Tuple[np.ndarray, Dict],
     template: Tuple[np.ndarray, Dict],
     resampling: Optional[Resampling] = None,
 ) -> Tuple[np.ndarray, Dict]:
     """
-    Coregistering a source raster to match the spatial properties of a template raster.
+    Co-registering a source raster to match the spatial properties of a template raster.
 
     Args:
         src: A tuple containing the source raster array and its metadata.
@@ -54,10 +55,12 @@ def raster_coregistration(
         resampling=resampling,
     )[0]
 
+    out_array, out_nodata = _cast_array_to_minimum_dtype(out_array, src_meta["nodata"])
+
     out_meta = template_meta.copy()
     out_meta.update(
-        dtype=src_meta["dtype"],
-        nodata=src_meta["nodata"],
+        dtype=out_array.dtype,
+        nodata=out_nodata,
     )
 
     return out_array.squeeze(), out_meta
