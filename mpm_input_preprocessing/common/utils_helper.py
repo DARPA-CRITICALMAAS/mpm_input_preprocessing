@@ -428,7 +428,7 @@ def __get_minimum_dtype(
     if unify_integer_types is True:
         if np.issubdtype(array.dtype, np.integer):
             assert src_min >= np.iinfo("int64").min and src_max <= np.iinfo("uint64").max, \
-                "Values out of range for integer type."
+                "Values out of range for supported integer type."
 
             return next(
                 dtype for dtype in integer_dtypes if (
@@ -438,7 +438,7 @@ def __get_minimum_dtype(
     else:
         if np.issubdtype(array.dtype, np.signedinteger):
             assert src_min >= np.iinfo("int64").min and src_max <= np.iinfo("int64").max, \
-                "Values out of range for signed integers type."
+                "Values out of range for supported signed integers type."
 
             return next(
                 dtype for dtype in signedinteger_dtypes if (
@@ -448,7 +448,7 @@ def __get_minimum_dtype(
 
         if np.issubdtype(array.dtype, np.unsignedinteger):
             assert src_min >= np.iinfo("uint64").min and src_max <= np.iinfo("uint64").max, \
-                "Values out of range for unsigned integers type."
+                "Values out of range for supported unsigned integers type."
 
             return next(
                 dtype for dtype in unsignedinteger_dtypes if (
@@ -459,7 +459,7 @@ def __get_minimum_dtype(
     # Floating
     if np.issubdtype(array.dtype, np.floating):
         assert src_min >= np.finfo("float64").min and src_max <= np.finfo("float64").max, \
-            "Values out of range for floating point type."
+            "Values out of range for supported floating point type."
 
         return next(
             dtype for dtype in floating_dtypes if np.finfo(dtype).min <= src_min and np.finfo(dtype).max >= src_max
