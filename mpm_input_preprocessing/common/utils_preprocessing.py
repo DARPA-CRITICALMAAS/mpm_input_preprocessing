@@ -141,7 +141,7 @@ def preprocess_raster(
     scale_raster(
         src_raster_path=olr_file,
         dst_raster_path=scaled_file,
-        scaling_type=scaling_type,
+        scaling_type=transform_methods_dict['scaling'],
         min_value=scale_min_value,
         max_value=scale_max_value
     )
@@ -277,7 +277,7 @@ def preprocess_vector(
     scale_raster(
         src_raster_path=olr_file,
         dst_raster_path=scaled_file,
-        scaling_type=scaling_type,
+        scaling_type=transform_methods_dict['scaling'],
         min_value=scale_min_value,
         max_value=scale_max_value
     )
