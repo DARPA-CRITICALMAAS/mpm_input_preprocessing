@@ -10,7 +10,7 @@ import hashlib
 import hmac
 from fastapi.security import APIKeyHeader
 
-from mpm_input_preprocessing.common.preprocessing import preprocess
+from mpm_input_preprocessing.common.preprocessing import preprocess, test
 
 from cdr_schemas.cdr_responses.prospectivity import ProspectModelMetaData
 from mpm_input_preprocessing.settings import app_settings
@@ -77,4 +77,7 @@ async def hook(
     return {"ok": "success"}
 
 
-
+@router.post("/test")
+async def test_er():
+    test()
+    
