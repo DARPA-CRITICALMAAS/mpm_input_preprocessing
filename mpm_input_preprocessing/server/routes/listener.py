@@ -25,8 +25,8 @@ async def event_handler(evt: Event):
         match evt:
             case Event(event="ping"):
                 logger.info("Received PING!")
-            case Event(event="prospectivity_model_run.process"):
-                print("Received model run event payload!")
+            case Event(event="prospectivity_evidence_layers.process"):
+                print("Received preprocess event payload!")
                 print(evt.payload)
                 preprocess(
                     ProspectModelMetaData(
@@ -80,4 +80,4 @@ async def hook(
 @router.post("/test")
 async def test_er():
     test()
-    
+
