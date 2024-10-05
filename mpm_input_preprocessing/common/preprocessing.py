@@ -28,35 +28,35 @@ def preprocess(
     Jataware to hook up sending preprocessed layers (raw raster + SaveProcessedDataLayer metadata object) to CDR once above is complete.
     """
 
-    print("Start preprocess...")
+    logger.info("Start preprocess...")
 
-    print(cma)
+    logger.info(cma)
 
     # create directory where to save the processed layers
     data_dir = Path("./data") / Path(cma.cma_id)
     os.makedirs(data_dir, exist_ok=True)
 
     # create aoi geopackage
-    print("Generating AOI geopackage.")
+    logger.info("Generating AOI geopackage.")
     aoi_geopkg_path = create_aoi_geopkg(cma, data_dir)
 
     # download reference layer
-    print("Downloading reference layer.")
+    logger.info("Downloading reference layer.")
     reference_layer_path = download_reference_layer(cma, data_dir)
 
-    print(evidence_layers)
+    logger.info(evidence_layers)
 
     # download evidence layers
-    print("Downloading evidence layers.")
-    evidence_layer_paths = download_evidence_layers(evidence_layers, data_dir)
+    logger.info("Downloading evidence layers.")
+    evidence_layers = download_evidence_layers(evidence_layers, data_dir)
 
     # preprocess evidence layers
-    print("Preprocessing evidence layers.")
+    logger.info("Preprocessing evidence layers.")
     preprocess_evidence_layers(
         evidence_layers,
-        evidence_layer_paths,
         aoi_geopkg_path,
         reference_layer_path,
+        cma_id=cma.cma_id,
         dst_crs=cma.crs,
         dst_nodata=np.nan,
         dst_res_x=cma.resolution[0],

@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from cdr_schemas.events import Event
 from fastapi import (BackgroundTasks, Depends,HTTPException, Request,
                      status)
+from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, CreateProcessDataLayer
 
 import hashlib
 import hmac
@@ -26,21 +27,18 @@ async def event_handler(evt: Event):
             case Event(event="ping"):
                 logger.info("Received PING!")
             case Event(event="prospectivity_evidence_layers.process"):
-                print("Received preprocess event payload!")
-                print(evt.payload)
+                logger.info("Received preprocess event payload!")
+                logger.info(evt.payload)
+                evidence_layer_objects = [CreateProcessDataLayer(**x) for x in evt.payload.get("evidence_layers")]
+                cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
                 preprocess(
-                    ProspectModelMetaData(
-                        model_run_id = evt.payload.get("model_run_id"),
-                        cma = evt.payload.get("cma"),
-                        model_type = evt.payload.get("model_type"),
-                        train_config = evt.payload.get("train_config"),
-                        evidence_layers = evt.payload.get("evidence_layers"),
-                        ))
+                    cma=cma,
+                    evidence_layers=evidence_layer_objects)
             case _:
-                print("Nothing to do for event: %s", evt)
+                logger.info("Nothing to do for event: %s", evt)
 
     except Exception:
-        print("background processing event: %s", evt)
+        logger.exception("failed")
         raise
 
 cdr_signiture = APIKeyHeader(name="x-cdr-signature-256")

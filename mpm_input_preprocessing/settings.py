@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     api_prefix: str ="/v1"
 
     registration_secret: str = "test"
+
+    SYSTEM: str = "mpm_input_preprocessing"
+    SYSTEM_VERSION: str = "0.0.1"
     
 
 app_settings = Settings()
