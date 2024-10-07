@@ -162,6 +162,7 @@ def preprocess_raster(
 
 
 def preprocess_vector(
+        *,
     layer: Path,
     aoi: Path,
     reference_layer_path: Path,

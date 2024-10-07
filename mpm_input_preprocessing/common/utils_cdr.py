@@ -12,10 +12,14 @@ from urllib.parse import urlparse
 import boto3
 from logging import Logger
 import json
+import hashlib
+
 
 from .utils_preprocessing import preprocess_raster, preprocess_vector
 
 logger: Logger = logging.getLogger(__name__)
+
+
 
 from ..settings import app_settings
 
@@ -122,16 +126,14 @@ async def post_results(file_name, file_path, data):
             "metadata": data  # Marking the part as JSON
         }
         files_ = [("input_file", (file_name, open(file_path, "rb")))]
-        try:
-        
-            logging.debug(f'files to be sent {files_}')
-            logging.debug(f'data to be sent {data_}')
-            r = await client.post(app_settings.cdr_endpoint_url +"/v1/prospectivity/prospectivity_input_layer", files=files_, data=data_, headers=auth)
-            logging.debug(f'Response text from CDR {r.text}')
-            r.raise_for_status()
+
+        logging.debug(f'files to be sent {files_}')
+        logging.debug(f'data to be sent {data_}')
+        r = await client.post(app_settings.cdr_endpoint_url +"/v1/prospectivity/prospectivity_input_layer", files=files_, data=data_, headers=auth)
+        logging.debug(f'Response text from CDR {r.text}')
+        r.raise_for_status()
           
-        except Exception as e:
-            logging.error(e)
+        
 
 async def preprocess_evidence_layers(
     evidence_layers,
@@ -142,46 +144,72 @@ async def preprocess_evidence_layers(
     dst_nodata: Union[None, float],
     dst_res_x: int,
     dst_res_y: int,
+    file_logger
 ) -> List[Path]:
     pev_lyr_paths = []
     for idx, layer in tqdm(enumerate(evidence_layers)):
-        logging.info(f"layer {layer}")
-        if Path(layer.get("local_file_path")).suffix == ".tif":
-            pev_lyr_path = preprocess_raster(
-                layer=layer.get("local_file_path"),
-                aoi=aoi,
-                reference_layer_path=reference_layer_path,
-                dst_crs=dst_crs,
-                dst_nodata=dst_nodata,
-                dst_res_x=dst_res_x,
-                dst_res_y=dst_res_y,
-                transform_methods=evidence_layers[idx].get("transform_methods")
-            )
-            # upload raster to cdr
-            payload=json.dumps({
-                "data_source_id":layer.get("data_source",{}).get("data_source_id"),
-                "cma_id":cma_id,
-                "title":"test",
-                "system": app_settings.SYSTEM,
-                "system_version": app_settings.SYSTEM_VERSION,
-                "transform_methods": layer.get("transform_methods")
-            })
+        try:
+            hash_object = hashlib.sha256()
             
-            await post_results(file_name="test.tif", file_path=pev_lyr_path, data=payload)
+            hash_object.update(
+                layer.get("data_source",{}).get(
+                    "data_source_id"
+                    ).encode('utf-8')
+                )
+            hex_dig = hash_object.hexdigest() + "_" + app_settings.SYSTEM + "_" + app_settings.SYSTEM_VERSION
 
-            
-        elif Path(layer.get("local_file_path")).suffix == ".zip":
-            pev_lyr_path = preprocess_vector(
-                layer.get("local_file_path"),
-                aoi,
-                reference_layer_path,
-                dst_crs,
-                dst_nodata,
-                dst_res_x,
-                dst_res_y,
-                transform_methods=evidence_layers[idx].get("transform_methods")
-            )
+
+            if Path(layer.get("local_file_path")).suffix == ".tif":
+                pev_lyr_path = preprocess_raster(
+                    layer=layer.get("local_file_path"),
+                    aoi=aoi,
+                    reference_layer_path=reference_layer_path,
+                    dst_crs=dst_crs,
+                    dst_nodata=dst_nodata,
+                    dst_res_x=dst_res_x,
+                    dst_res_y=dst_res_y,
+                    transform_methods=evidence_layers[idx].get("transform_methods")
+                )
+                # upload raster to cdr
+                payload=json.dumps({
+                    "data_source_id":layer.get("data_source",{}).get("data_source_id"),
+                    "cma_id":cma_id,
+                    "title":"test",
+                    "system": app_settings.SYSTEM,
+                    "system_version": app_settings.SYSTEM_VERSION,
+                    "transform_methods": layer.get("transform_methods")
+                })
                 
-        pev_lyr_paths.append(pev_lyr_path)
+                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+
+                
+            elif Path(layer.get("local_file_path")).suffix == ".zip":
+                logging.info("HERE")
+                pev_lyr_path = preprocess_vector(
+                    layer=layer.get("local_file_path"),
+                    aoi=aoi,
+                    reference_layer_path=reference_layer_path,
+                    dst_crs=dst_crs,
+                    dst_nodata=dst_nodata,
+                    dst_res_x=dst_res_x,
+                    dst_res_y=dst_res_y,
+                    transform_methods=evidence_layers[idx].get("transform_methods")
+                )
+                payload=json.dumps({
+                    "data_source_id":layer.get("data_source",{}).get("data_source_id"),
+                    "cma_id":cma_id,
+                    "title":"test",
+                    "system": app_settings.SYSTEM,
+                    "system_version": app_settings.SYSTEM_VERSION,
+                    "transform_methods": layer.get("transform_methods")
+                })
+                
+                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+
+                    
+            pev_lyr_paths.append(pev_lyr_path)
+        except Exception:
+            file_logger.exception(f"ERROR processing layer: {layer}")
+
     
     return pev_lyr_paths

@@ -20,6 +20,17 @@ prefix = "/listener"
 logger: Logger = logging.getLogger(__name__)
 router = APIRouter()
 
+file_logger = logging.getLogger("file_logger")
+file_logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler("error_log.log")
+file_handler.setLevel(logging.ERROR)  
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+
+file_logger.addHandler(file_handler)
+
+file_logger.error("Starting file logger.")
 
 async def event_handler(evt: Event):
     try:
@@ -33,7 +44,8 @@ async def event_handler(evt: Event):
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
                 await preprocess(
                     cma=cma,
-                    evidence_layers=evidence_layer_objects)
+                    evidence_layers=evidence_layer_objects,
+                    file_logger=file_logger)
             case _:
                 logger.info("Nothing to do for event: %s", evt)
 

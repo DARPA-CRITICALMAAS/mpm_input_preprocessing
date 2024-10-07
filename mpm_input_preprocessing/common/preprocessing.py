@@ -19,7 +19,8 @@ from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 
 async def preprocess(
     cma: CriticalMineralAssessment,
-    evidence_layers: List[CreateProcessDataLayer]
+    evidence_layers: List[CreateProcessDataLayer],
+    file_logger
 ):
     # SRI/Beak your code here.
     """
@@ -65,7 +66,8 @@ async def preprocess(
             dst_crs=cma.crs,
             dst_nodata=np.nan,
             dst_res_x=cma.resolution[0],
-            dst_res_y=cma.resolution[1]
+            dst_res_y=cma.resolution[1],
+            file_logger=file_logger
         )
 
 
