@@ -3,9 +3,10 @@ import os
 
 from logging import Logger
 from typing import List
-from tqdm import tqdm
 from pathlib import Path
 import numpy as np
+import tempfile
+
 
 from mpm_input_preprocessing.common.utils_cdr import create_aoi_geopkg, download_reference_layer, download_evidence_layers, preprocess_evidence_layers
 
@@ -33,36 +34,39 @@ async def preprocess(
     logger.info(cma)
 
     # create directory where to save the processed layers
-    data_dir = Path("./data") / Path(cma.cma_id)
-    os.makedirs(data_dir, exist_ok=True)
+    # data_dir = Path("./data") / Path(cma.cma_id)
+    # os.makedirs(data_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir) / Path(cma.cma_id)
+        os.makedirs(data_dir, exist_ok=True)
 
-    # create aoi geopackage
-    logger.info("Generating AOI geopackage.")
-    aoi_geopkg_path = create_aoi_geopkg(cma, data_dir)
+        # create aoi geopackage
+        logger.info("Generating AOI geopackage.")
+        aoi_geopkg_path = create_aoi_geopkg(cma, data_dir)
 
-    # download reference layer
-    logger.info("Downloading reference layer.")
-    reference_layer_path = download_reference_layer(cma, data_dir)
+        # download reference layer
+        logger.info("Downloading reference layer.")
+        reference_layer_path = download_reference_layer(cma, data_dir)
 
-    logger.info(evidence_layers)
+        logger.info(evidence_layers)
 
-    # download evidence layers
-    logger.info("Downloading evidence layers.")
-    dumped_evidence_layers = [ x.model_dump() for x in evidence_layers]
-    evidence_layers = download_evidence_layers(dumped_evidence_layers, data_dir)
+        # download evidence layers
+        logger.info("Downloading evidence layers.")
+        dumped_evidence_layers = [ x.model_dump() for x in evidence_layers]
+        evidence_layers = download_evidence_layers(dumped_evidence_layers, data_dir)
 
-    # preprocess evidence layers
-    logger.info("Preprocessing evidence layers.")
-    await preprocess_evidence_layers(
-        dumped_evidence_layers,
-        aoi_geopkg_path,
-        reference_layer_path,
-        cma_id=cma.cma_id,
-        dst_crs=cma.crs,
-        dst_nodata=np.nan,
-        dst_res_x=cma.resolution[0],
-        dst_res_y=cma.resolution[1]
-    )
+        # preprocess evidence layers
+        logger.info("Preprocessing evidence layers.")
+        await preprocess_evidence_layers(
+            dumped_evidence_layers,
+            aoi_geopkg_path,
+            reference_layer_path,
+            cma_id=cma.cma_id,
+            dst_crs=cma.crs,
+            dst_nodata=np.nan,
+            dst_res_x=cma.resolution[0],
+            dst_res_y=cma.resolution[1]
+        )
 
 
 
