@@ -2,18 +2,27 @@ import fiona
 import requests
 import os
 import zipfile
-
 from pathlib import Path
 import geopandas as gpd
 from tqdm import tqdm
 from typing import Union, List
 import httpx
 import logging
+from urllib.parse import urlparse
+import boto3
+from logging import Logger
+import json
+
+from .utils_preprocessing import preprocess_raster, preprocess_vector
+
+logger: Logger = logging.getLogger(__name__)
+
 from ..settings import app_settings
+
 auth = {
     "Authorization": app_settings.cdr_bearer_token,
 }
-from mpm_input_preprocessing.common.utils_preprocessing import preprocess_raster, preprocess_vector
+
 
 
 def create_aoi_geopkg(
@@ -38,26 +47,48 @@ def download_reference_layer(
     cma,
     dst_dir: Path = Path("./data")
 ) -> Path:
-    response = requests.get(cma.download_url)
-    response.raise_for_status()
+    s3_key=parse_s3_url(cma.download_url)[1]
+    
     dst_path = dst_dir / Path(cma.download_url).name
-    with open(dst_path, 'wb') as f:
-        f.write(response.content)
+    logger.info(f'path {dst_path}')
+    download_file(s3_key, dst_path)
+
     return dst_path
 
 
 def download_evidence_layer(
     title: str,
-    url: str,
+    s3_key: str,
     dst_dir: Path
 ) -> Path:
-    local_file = f"{title}{Path(url).suffix}"
-    response = requests.get(url)
-    response.raise_for_status()
+    local_file = f"{title}{Path(s3_key).suffix}"
     dst_path = dst_dir / local_file
-    with open(dst_path, 'wb') as f:
-        f.write(response.content)
+    download_file(s3_key, dst_path)
+    
     return dst_path
+
+
+def parse_s3_url(url: str):
+    parsed_url = urlparse(url)
+    path_parts = parsed_url.path.lstrip('/').split('/')
+    bucket = path_parts[0]
+    s3_key = '/'.join(path_parts[1:])
+    
+    return bucket, s3_key
+
+
+def s3_client(endpoint_url=app_settings.cdr_s3_endpoint_url):
+    s3 = boto3.client("s3", endpoint_url=endpoint_url, verify=False)
+    return s3
+
+
+def download_file(s3_key, local_file_path):
+    s3 = s3_client()
+    try:
+        s3.download_file(app_settings.cdr_public_bucket, s3_key, local_file_path)
+        logger.info(f"File downloaded successfully to {local_file_path}")
+    except Exception:
+        logger.exception(f"Error downloading file from S3")
 
 
 def download_evidence_layers(
@@ -70,9 +101,10 @@ def download_evidence_layers(
     # downloads evidence layers
     # ev_lyrs_paths = []
     for ev_lyr in tqdm(evidence_layers):
+        logging.info(f"ev_laer, {ev_lyr}")
         ev_lyr_path = download_evidence_layer(
-            title=ev_lyr.data_source.evidence_layer_raster_prefix,
-            url=ev_lyr.data_source.download_url,
+            title=ev_lyr.get("data_source",{}).get("evidence_layer_raster_prefix"),
+            s3_key=parse_s3_url(ev_lyr.get("data_source",{}).get("download_url"))[1],
             dst_dir=ev_lyrs_path
         )
         if ev_lyr_path.suffix == '.zip':
@@ -89,7 +121,7 @@ async def post_results(file_name, file_path, data):
         data_ = {
             "metadata": data  # Marking the part as JSON
         }
-        files_ = [("files", (file_name, open(file_path, "rb")))]
+        files_ = [("input_file", (file_name, open(file_path, "rb")))]
         try:
         
             logging.debug(f'files to be sent {files_}')
@@ -101,7 +133,7 @@ async def post_results(file_name, file_path, data):
         except Exception as e:
             logging.error(e)
 
-def preprocess_evidence_layers(
+async def preprocess_evidence_layers(
     evidence_layers,
     aoi: Path,
     reference_layer_path: Path,
@@ -113,39 +145,41 @@ def preprocess_evidence_layers(
 ) -> List[Path]:
     pev_lyr_paths = []
     for idx, layer in tqdm(enumerate(evidence_layers)):
-        if layer.local_file_path.suffix == ".tif":
+        logging.info(f"layer {layer}")
+        if Path(layer.get("local_file_path")).suffix == ".tif":
             pev_lyr_path = preprocess_raster(
-                layer.local_file_path,
-                aoi,
-                reference_layer_path,
-                dst_crs,
-                dst_nodata,
-                dst_res_x,
-                dst_res_y,
-                transform_methods=evidence_layers[idx].transform_methods
+                layer=layer.get("local_file_path"),
+                aoi=aoi,
+                reference_layer_path=reference_layer_path,
+                dst_crs=dst_crs,
+                dst_nodata=dst_nodata,
+                dst_res_x=dst_res_x,
+                dst_res_y=dst_res_y,
+                transform_methods=evidence_layers[idx].get("transform_methods")
             )
             # upload raster to cdr
-            payload={
-                "data_source_id":layer.get("data_source_id"),
+            payload=json.dumps({
+                "data_source_id":layer.get("data_source",{}).get("data_source_id"),
                 "cma_id":cma_id,
                 "title":"test",
                 "system": app_settings.SYSTEM,
                 "system_version": app_settings.SYSTEM_VERSION,
                 "transform_methods": layer.get("transform_methods")
-            }
-            post_results(file_name="test.tif", file_path=layer.local_file_path, data=payload)
+            })
+            
+            await post_results(file_name="test.tif", file_path=pev_lyr_path, data=payload)
 
             
-        elif layer.suffix == ".zip":
+        elif Path(layer.get("local_file_path")).suffix == ".zip":
             pev_lyr_path = preprocess_vector(
-                layer.local_file_path,
+                layer.get("local_file_path"),
                 aoi,
                 reference_layer_path,
                 dst_crs,
                 dst_nodata,
                 dst_res_x,
                 dst_res_y,
-                transform_methods=evidence_layers[idx].transform_methods
+                transform_methods=evidence_layers[idx].get("transform_methods")
             )
                 
         pev_lyr_paths.append(pev_lyr_path)

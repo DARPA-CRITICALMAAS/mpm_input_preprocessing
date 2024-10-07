@@ -3,7 +3,8 @@ import rasterio
 
 import numpy as np
 import geopandas as gpd
-
+import logging
+from logging import Logger
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
 from scipy.ndimage import distance_transform_edt
 from pathlib import Path
@@ -16,7 +17,10 @@ from pathlib import Path
 
 from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute, ImputeMethod
 
+logger: Logger = logging.getLogger(__name__)
+
 def preprocess_raster(
+    *,
     layer: Path,
     aoi: Path,
     reference_layer_path: Path,
@@ -69,6 +73,7 @@ def preprocess_raster(
         'impute_window_size': None,
         'scaling': 'standard'
     }
+    logger.info(transform_methods)
     for method in transform_methods:
         if isinstance(method, TransformMethod):
             transform_methods_dict['transform'] = method.value

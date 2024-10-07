@@ -31,7 +31,7 @@ async def event_handler(evt: Event):
                 logger.info(evt.payload)
                 evidence_layer_objects = [CreateProcessDataLayer(**x) for x in evt.payload.get("evidence_layers")]
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
-                preprocess(
+                await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects)
             case _:

@@ -16,7 +16,7 @@ from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, C
 from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 
 
-def preprocess(
+async def preprocess(
     cma: CriticalMineralAssessment,
     evidence_layers: List[CreateProcessDataLayer]
 ):
@@ -48,12 +48,13 @@ def preprocess(
 
     # download evidence layers
     logger.info("Downloading evidence layers.")
-    evidence_layers = download_evidence_layers(evidence_layers, data_dir)
+    dumped_evidence_layers = [ x.model_dump() for x in evidence_layers]
+    evidence_layers = download_evidence_layers(dumped_evidence_layers, data_dir)
 
     # preprocess evidence layers
     logger.info("Preprocessing evidence layers.")
-    preprocess_evidence_layers(
-        evidence_layers,
+    await preprocess_evidence_layers(
+        dumped_evidence_layers,
         aoi_geopkg_path,
         reference_layer_path,
         cma_id=cma.cma_id,
