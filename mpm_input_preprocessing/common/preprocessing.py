@@ -8,7 +8,13 @@ import numpy as np
 import tempfile
 
 
-from mpm_input_preprocessing.common.utils_cdr import create_aoi_geopkg, download_reference_layer, download_evidence_layers, preprocess_evidence_layers
+from mpm_input_preprocessing.common.utils_cdr import (
+    create_aoi_geopkg,
+    download_reference_layer,
+    download_evidence_layers,
+    preprocess_evidence_layers,
+    send_label_layer
+)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -20,6 +26,7 @@ from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 async def preprocess(
     cma: CriticalMineralAssessment,
     evidence_layers: List[CreateProcessDataLayer],
+    mineral_sites: List[List[int|float]],
     file_logger
 ):
     # SRI/Beak your code here.
@@ -39,7 +46,9 @@ async def preprocess(
     # os.makedirs(data_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir) / Path(cma.cma_id)
+        vector_dir = Path("./data") / Path("vector")
         os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(vector_dir, exist_ok=True)
 
         # create aoi geopackage
         logger.info("Generating AOI geopackage.")
@@ -69,7 +78,14 @@ async def preprocess(
             dst_res_y=cma.resolution[1],
             file_logger=file_logger
         )
-
+        await send_label_layer(
+            vector_dir=vector_dir,
+            cma=cma,
+            mineral_sites=mineral_sites,
+            aoi=aoi_geopkg_path,
+            reference_layer_path=reference_layer_path
+        )
+        
 
 
 def test():

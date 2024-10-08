@@ -45,6 +45,7 @@ async def event_handler(evt: Event):
                 await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects,
+                    mineral_sites =  evt.payload.get("mineral_sites",[]),
                     file_logger=file_logger)
             case _:
                 logger.info("Nothing to do for event: %s", evt)

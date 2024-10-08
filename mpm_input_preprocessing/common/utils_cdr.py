@@ -15,7 +15,7 @@ import json
 import hashlib
 
 
-from .utils_preprocessing import preprocess_raster, preprocess_vector
+from .utils_preprocessing import preprocess_raster, preprocess_vector, process_label_raster
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -133,7 +133,42 @@ async def post_results(file_name, file_path, data):
         logging.debug(f'Response text from CDR {r.text}')
         r.raise_for_status()
           
-        
+async def send_label_layer(
+         *,
+        vector_dir,
+        cma,
+        mineral_sites:List,
+        aoi,
+        reference_layer_path,
+        dilation_size: int = 5
+):
+    pev_lyr_path = process_label_raster(
+        vector_dir=vector_dir,
+        cma=cma,
+        mineral_sites=mineral_sites,
+        aoi=aoi,
+        reference_layer_path=reference_layer_path,
+        dilation_size=dilation_size
+        )
+    hash_object = hashlib.sha256()
+            
+    hash_object.update(
+        (json.dumps(mineral_sites)+str(dilation_size)).encode('utf-8'))
+    
+    hex_dig = hash_object.hexdigest() + "_" + app_settings.SYSTEM + "_" + app_settings.SYSTEM_VERSION
+    payload=json.dumps({
+                    "data_source_id":None,
+                    "cma_id":cma.cma_id,
+                    "title":"test",
+                    "system": app_settings.SYSTEM,
+                    "system_version": app_settings.SYSTEM_VERSION,
+                    "transform_methods": []
+                })
+    logger.info('Finished')
+    # await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+
+
+    
 
 async def preprocess_evidence_layers(
     evidence_layers,

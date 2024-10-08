@@ -3,6 +3,7 @@ import rasterio
 
 import numpy as np
 import geopandas as gpd
+import pandas as pd
 import logging
 from logging import Logger
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
@@ -14,10 +15,79 @@ from rasterio.mask import mask
 from rasterio.features import rasterize
 from typing import List, Dict, Optional, Union, Literal
 from pathlib import Path
+from shapely.geometry import Point
 
 from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute, ImputeMethod
 
 logger: Logger = logging.getLogger(__name__)
+
+def process_label_raster(
+        *,
+        vector_dir: Path,
+        cma,
+        mineral_sites:List,
+        aoi,
+        reference_layer_path: Path,
+        dilation_size: int = 5
+):
+    
+    warped_shp_file = vector_dir / '_warped.shp'
+    rasterized_file = vector_dir / '_rasterized.tif'
+    clipped_file = vector_dir / '_clipped.tif'
+    aligned_file = vector_dir / '_aligned.tif'
+    dilated_file = vector_dir / '_processed.tif'
+    logger.info(f"mineral {mineral_sites}")
+    geometry = [Point(lon, lat) for lon, lat in mineral_sites]
+    gdf = gpd.GeoDataFrame(
+        {'centroid_epsg_4326': geometry},
+        geometry='centroid_epsg_4326',
+        crs='EPSG:4326'
+    )
+    gdf = gdf.to_crs(cma.crs)
+    logger.info(gdf.head())
+    logger.info("wowoowowowowo")
+    aoi_gdf = gpd.read_file(aoi)
+    clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
+    logger.info(clipped_gdf.head())
+    logger.info("owow")
+    clipped_gdf.to_file(warped_shp_file)
+    vector_to_raster(
+        src_vector_path=warped_shp_file,
+        dst_raster_path=rasterized_file,
+        dst_res_x=cma.resolution[0],
+        dst_res_y=cma.resolution[1],
+        fill_value=0.0,
+        aoi_path=aoi
+    )
+    clip_raster(
+        src_raster_path=rasterized_file,
+        dst_raster_path=clipped_file,
+        aoi_path=aoi
+    )
+    align_rasters(
+        src_raster_path=clipped_file,
+        dst_raster_path=aligned_file,
+        reference_raster_path=reference_layer_path,
+        resampling=rasterio.warp.Resampling.nearest
+    )
+    dilate_raster(
+        src_raster_path=aligned_file, #clipped_file,
+        dst_raster_path=dilated_file,
+        dilation_size=dilation_size,
+        label_raster=True
+    )
+    ### Find out the number of rasterized deposits ###
+    # Load the raster data
+    logger.info(str(dilated_file))
+
+    with rasterio.open(dilated_file) as src:
+        raster_data = src.read(1)
+    # Calculate the number of ones
+    num_of_deposits = np.count_nonzero(raster_data == 1)
+    logger.info(f"num_of_deposits:{num_of_deposits}")
+
+    return dilated_file
+
 
 def preprocess_raster(
     *,
