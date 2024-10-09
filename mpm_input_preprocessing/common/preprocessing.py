@@ -18,7 +18,11 @@ from mpm_input_preprocessing.common.utils_cdr import (
 
 logger: Logger = logging.getLogger(__name__)
 
-from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, CreateProcessDataLayer
+from cdr_schemas.cdr_responses.prospectivity import (
+    CriticalMineralAssessment,
+    CreateProcessDataLayer,
+    CreateVectorProcessDataLayer
+)
 
 from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 
@@ -26,7 +30,7 @@ from cdr_schemas.prospectivity_input import SaveProcessedDataLayer
 async def preprocess(
     cma: CriticalMineralAssessment,
     evidence_layers: List[CreateProcessDataLayer],
-    mineral_sites: List[List[int|float]],
+    feature_layer_objects: List[CreateVectorProcessDataLayer],
     file_logger
 ):
     # SRI/Beak your code here.
@@ -78,12 +82,16 @@ async def preprocess(
             dst_res_y=cma.resolution[1],
             file_logger=file_logger
         )
+
+        dumped_feature_layers = [ x.model_dump() for x in feature_layer_objects]
+
         await send_label_layer(
             vector_dir=vector_dir,
             cma=cma,
-            mineral_sites=mineral_sites,
+            feature_layer_objects=dumped_feature_layers,
             aoi=aoi_geopkg_path,
-            reference_layer_path=reference_layer_path
+            reference_layer_path=reference_layer_path,
+            file_logger=file_logger
         )
         
 

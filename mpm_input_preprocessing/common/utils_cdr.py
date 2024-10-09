@@ -120,52 +120,62 @@ def download_evidence_layers(
     return evidence_layers
 
 
-async def post_results(file_name, file_path, data):
+async def post_results(file_name, file_path, data, file_logger):
     async with httpx.AsyncClient(timeout=None) as client:
-        data_ = {
-            "metadata": data  # Marking the part as JSON
-        }
-        files_ = [("input_file", (file_name, open(file_path, "rb")))]
+        try:
+            data_ = {
+                "metadata": data  # Marking the part as JSON
+            }
+            files_ = [("input_file", (file_name, open(file_path, "rb")))]
 
-        logging.debug(f'files to be sent {files_}')
-        logging.debug(f'data to be sent {data_}')
-        r = await client.post(app_settings.cdr_endpoint_url +"/v1/prospectivity/prospectivity_input_layer", files=files_, data=data_, headers=auth)
-        logging.debug(f'Response text from CDR {r.text}')
-        r.raise_for_status()
+            logging.debug(f'files to be sent {files_}')
+            logging.debug(f'data to be sent {data_}')
+            r = await client.post(app_settings.cdr_endpoint_url +"/v1/prospectivity/prospectivity_input_layer", files=files_, data=data_, headers=auth)
+            logging.debug(f'Response text from CDR {r.text}')
+            r.raise_for_status()
+        except Exception:
+            file_logger.exception("Failed to send to cdr.")
           
 async def send_label_layer(
          *,
         vector_dir,
         cma,
-        mineral_sites:List,
+        feature_layer_objects:List,
         aoi,
         reference_layer_path,
-        dilation_size: int = 5
+        dilation_size: int = 5,
+        file_logger
 ):
-    pev_lyr_path = process_label_raster(
-        vector_dir=vector_dir,
-        cma=cma,
-        mineral_sites=mineral_sites,
-        aoi=aoi,
-        reference_layer_path=reference_layer_path,
-        dilation_size=dilation_size
-        )
-    hash_object = hashlib.sha256()
-            
-    hash_object.update(
-        (json.dumps(mineral_sites)+str(dilation_size)).encode('utf-8'))
-    
-    hex_dig = hash_object.hexdigest() + "_" + app_settings.SYSTEM + "_" + app_settings.SYSTEM_VERSION
-    payload=json.dumps({
-                    "data_source_id":None,
-                    "cma_id":cma.cma_id,
-                    "title":"test",
-                    "system": app_settings.SYSTEM,
-                    "system_version": app_settings.SYSTEM_VERSION,
-                    "transform_methods": []
-                })
-    logger.info('Finished')
-    # await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+    for feature_layer_info in feature_layer_objects:
+        pev_lyr_path = process_label_raster(
+            vector_dir=vector_dir,
+            cma=cma,
+            feature_layer_info=feature_layer_info,
+            aoi=aoi,
+            reference_layer_path=reference_layer_path,
+            dilation_size=dilation_size
+            )
+        hash_object = hashlib.sha256()
+                
+        hash_object.update(
+            (json.dumps(sorted(feature_layer_info))+str(dilation_size)).encode('utf-8'))
+        
+        hex_dig = hash_object.hexdigest() + "_" + app_settings.SYSTEM + "_" + app_settings.SYSTEM_VERSION
+
+       
+        payload=json.dumps({
+                        "cma_id":cma.cma_id,
+                        "title":feature_layer_info.get("title","NeedToSetTitle"),
+                        "system": app_settings.SYSTEM,
+                        "system_version": app_settings.SYSTEM_VERSION,
+                        "transform_methods": feature_layer_info.get("transform_methods"),
+                        "label_raster":feature_layer_info.get("label_raster",False),
+                        "raw_data_info": [{"id":x.get("id"), "raw_data_type":x.get("raw_data_type")} for x in feature_layer_info.get("evidence_features",[])],
+                        "extra_geometries": feature_layer_info.get("extra_geometries",[])
+                    })
+        logger.info(f"payload {payload}")
+        logger.info('Finished')
+    await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload, file_logger=file_logger)
 
 
     
@@ -191,6 +201,7 @@ async def preprocess_evidence_layers(
                     "data_source_id"
                     ).encode('utf-8')
                 )
+            hash_object.update(sorted(layer.get("transform_methods",[])).encode('utf-8'))
             hex_dig = hash_object.hexdigest() + "_" + app_settings.SYSTEM + "_" + app_settings.SYSTEM_VERSION
 
 
@@ -203,19 +214,22 @@ async def preprocess_evidence_layers(
                     dst_nodata=dst_nodata,
                     dst_res_x=dst_res_x,
                     dst_res_y=dst_res_y,
-                    transform_methods=evidence_layers[idx].get("transform_methods")
+                    transform_methods=layer.get("transform_methods",[])
                 )
                 # upload raster to cdr
                 payload=json.dumps({
-                    "data_source_id":layer.get("data_source",{}).get("data_source_id"),
+                    "raw_data_info": [{"id":layer.get("data_source",{}).get("data_source_id"),
+                                        "raw_data_type":"tif"}],
+                    "extra_geometries": [],
                     "cma_id":cma_id,
-                    "title":"test",
+                    "title":layer.get("title","NeedToSetTitle"),
                     "system": app_settings.SYSTEM,
                     "system_version": app_settings.SYSTEM_VERSION,
-                    "transform_methods": layer.get("transform_methods")
+                    "transform_methods": layer.get("transform_methods",[]),
+                    "label_raster":layer.get("label_raster",False)
                 })
                 
-                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload, file_logger=file_logger)
 
                 
             elif Path(layer.get("local_file_path")).suffix == ".zip":
@@ -231,15 +245,18 @@ async def preprocess_evidence_layers(
                     transform_methods=evidence_layers[idx].get("transform_methods")
                 )
                 payload=json.dumps({
-                    "data_source_id":layer.get("data_source",{}).get("data_source_id"),
+                     "raw_data_info": [{"id":layer.get("data_source",{}).get("data_source_id"),
+                                        "raw_data_type":"vector"}],
+                    "extra_geometries": [],
                     "cma_id":cma_id,
-                    "title":"test",
+                    "title":layer.get("title","NeedToSetTitle"),
                     "system": app_settings.SYSTEM,
                     "system_version": app_settings.SYSTEM_VERSION,
-                    "transform_methods": layer.get("transform_methods")
+                    "transform_methods": layer.get("transform_methods",[]),
+                    "label_raster":layer.get("label_raster",False)
                 })
                 
-                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload)
+                await post_results(file_name=f"{hex_dig}.tif", file_path=pev_lyr_path, data=payload, file_logger=file_logger)
 
                     
             pev_lyr_paths.append(pev_lyr_path)

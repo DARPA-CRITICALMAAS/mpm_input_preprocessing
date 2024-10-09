@@ -15,7 +15,7 @@ from rasterio.mask import mask
 from rasterio.features import rasterize
 from typing import List, Dict, Optional, Union, Literal
 from pathlib import Path
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString, Polygon, shape
 
 from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute, ImputeMethod
 
@@ -25,7 +25,7 @@ def process_label_raster(
         *,
         vector_dir: Path,
         cma,
-        mineral_sites:List,
+        feature_layer_info,
         aoi,
         reference_layer_path: Path,
         dilation_size: int = 5
@@ -36,20 +36,19 @@ def process_label_raster(
     clipped_file = vector_dir / '_clipped.tif'
     aligned_file = vector_dir / '_aligned.tif'
     dilated_file = vector_dir / '_processed.tif'
-    logger.info(f"mineral {mineral_sites}")
-    geometry = [Point(lon, lat) for lon, lat in mineral_sites]
+
+    geometry = [shape(feature.get("geom")) for feature in feature_layer_info.get("evidence_features",[])]
+    extras = [shape(feature) for feature in feature_layer_info.get("extra_geometries",[])]
     gdf = gpd.GeoDataFrame(
-        {'centroid_epsg_4326': geometry},
-        geometry='centroid_epsg_4326',
+        {'feature_epsg_4326': geometry+extras},
+        geometry='feature_epsg_4326',
         crs='EPSG:4326'
     )
     gdf = gdf.to_crs(cma.crs)
-    logger.info(gdf.head())
-    logger.info("wowoowowowowo")
+    
     aoi_gdf = gpd.read_file(aoi)
     clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
-    logger.info(clipped_gdf.head())
-    logger.info("owow")
+
     clipped_gdf.to_file(warped_shp_file)
     vector_to_raster(
         src_vector_path=warped_shp_file,
@@ -71,18 +70,17 @@ def process_label_raster(
         resampling=rasterio.warp.Resampling.nearest
     )
     dilate_raster(
-        src_raster_path=aligned_file, #clipped_file,
+        src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
         dilation_size=dilation_size,
         label_raster=True
     )
+    
     ### Find out the number of rasterized deposits ###
     # Load the raster data
-    logger.info(str(dilated_file))
-
     with rasterio.open(dilated_file) as src:
         raster_data = src.read(1)
-    # Calculate the number of ones
+
     num_of_deposits = np.count_nonzero(raster_data == 1)
     logger.info(f"num_of_deposits:{num_of_deposits}")
 

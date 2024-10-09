@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from cdr_schemas.events import Event
 from fastapi import (BackgroundTasks, Depends,HTTPException, Request,
                      status)
-from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, CreateProcessDataLayer
+from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, CreateProcessDataLayer, CreateVectorProcessDataLayer
 
 import hashlib
 import hmac
@@ -41,11 +41,12 @@ async def event_handler(evt: Event):
                 logger.info("Received preprocess event payload!")
                 logger.info(evt.payload)
                 evidence_layer_objects = [CreateProcessDataLayer(**x) for x in evt.payload.get("evidence_layers")]
+                feature_layer_objects = [CreateVectorProcessDataLayer(**x) for x in evt.payload.get("vector_layers")]
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
                 await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects,
-                    mineral_sites =  evt.payload.get("mineral_sites",[]),
+                    feature_layer_objects = feature_layer_objects,
                     file_logger=file_logger)
             case _:
                 logger.info("Nothing to do for event: %s", evt)
