@@ -3,9 +3,12 @@ from logging import Logger
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from cdr_schemas.events import Event
-from fastapi import (BackgroundTasks, Depends,HTTPException, Request,
-                     status)
-from cdr_schemas.cdr_responses.prospectivity import CriticalMineralAssessment, CreateProcessDataLayer, CreateVectorProcessDataLayer
+from fastapi import Depends, Request, status
+from cdr_schemas.cdr_responses.prospectivity import (
+    CriticalMineralAssessment,
+    CreateProcessDataLayer,
+    CreateVectorProcessDataLayer,
+)
 
 import hashlib
 import hmac
@@ -13,8 +16,8 @@ from fastapi.security import APIKeyHeader
 
 from mpm_input_preprocessing.common.preprocessing import preprocess, test
 
-from cdr_schemas.cdr_responses.prospectivity import ProspectModelMetaData
 from mpm_input_preprocessing.settings import app_settings
+
 prefix = "/listener"
 
 logger: Logger = logging.getLogger(__name__)
@@ -24,13 +27,14 @@ file_logger = logging.getLogger("file_logger")
 file_logger.setLevel(logging.INFO)
 
 file_handler = logging.FileHandler("error_log.log")
-file_handler.setLevel(logging.ERROR)  
-file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setLevel(logging.ERROR)
+file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(file_formatter)
 
 file_logger.addHandler(file_handler)
 
 file_logger.error("Starting file logger.")
+
 
 async def event_handler(evt: Event):
     try:
@@ -40,14 +44,21 @@ async def event_handler(evt: Event):
             case Event(event="prospectivity_evidence_layers.process"):
                 logger.info("Received preprocess event payload!")
                 logger.info(evt.payload)
-                evidence_layer_objects = [CreateProcessDataLayer(**x) for x in evt.payload.get("evidence_layers")]
-                feature_layer_objects = [CreateVectorProcessDataLayer(**x) for x in evt.payload.get("vector_layers")]
+                evidence_layer_objects = [
+                    CreateProcessDataLayer(**x)
+                    for x in evt.payload.get("evidence_layers")
+                ]
+                feature_layer_objects = [
+                    CreateVectorProcessDataLayer(**x)
+                    for x in evt.payload.get("vector_layers")
+                ]
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
                 await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects,
-                    feature_layer_objects = feature_layer_objects,
-                    file_logger=file_logger)
+                    feature_layer_objects=feature_layer_objects,
+                    file_logger=file_logger,
+                )
             case _:
                 logger.info("Nothing to do for event: %s", evt)
 
@@ -55,25 +66,33 @@ async def event_handler(evt: Event):
         logger.exception("failed")
         raise
 
+
 cdr_signiture = APIKeyHeader(name="x-cdr-signature-256")
 
 
-async def verify_signature(request: Request, signature_header: str = Depends(cdr_signiture)):
-
+async def verify_signature(
+    request: Request, signature_header: str = Depends(cdr_signiture)
+):
     payload_body = await request.body()
     if not signature_header:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="x-hub-signature-256 header is missing!")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="x-hub-signature-256 header is missing!",
+        )
 
-    hash_object = hmac.new(app_settings.registration_secret.encode(
-        "utf-8"), msg=payload_body, digestmod=hashlib.sha256)
+    hash_object = hmac.new(
+        app_settings.registration_secret.encode("utf-8"),
+        msg=payload_body,
+        digestmod=hashlib.sha256,
+    )
     expected_signature = hash_object.hexdigest()
     if not hmac.compare_digest(expected_signature, signature_header):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Request signatures didn't match!")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Request signatures didn't match!",
+        )
 
     return True
-
 
 
 @router.post("/hook")
@@ -92,4 +111,3 @@ async def hook(
 @router.post("/test")
 async def test_er():
     test()
-

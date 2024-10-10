@@ -16,8 +16,12 @@ setup_middleware(api)
 api.include_router(api_router, prefix=app_settings.api_prefix)
 
 
-
-@api.get("/_/health", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, include_in_schema=False)
+@api.get(
+    "/_/health",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    include_in_schema=False,
+)
 async def health():
     pass
 
