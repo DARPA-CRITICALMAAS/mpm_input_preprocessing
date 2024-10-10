@@ -1,12 +1,8 @@
 from fastapi import APIRouter
 
-from .routes import (
-    health,
-    listener
-)
+from .routes import health, listener
 
 tags_metadata = [
-   
     {
         "name": "Health",
         "description": "Health Checks",
@@ -14,7 +10,7 @@ tags_metadata = [
     {
         "name": "Listener",
         "description": "Listen For Events",
-    }
+    },
 ]
 
 api_router = APIRouter()
