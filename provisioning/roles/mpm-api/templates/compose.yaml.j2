@@ -1,0 +1,25 @@
+services:
+
+  georef:
+    image: registry.gitlab.com/jataware/mpm_input_preprocessing:{{ mpm_version }}
+    hostname: mpm-api.${INTERNAL_DOMAIN}
+    ports:
+      - 8082:8082
+    entrypoint:
+      - uvicorn
+      - mpm_input_preprocessing.server.api:api
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8082"
+      - --log-config
+      - logging.yaml
+      - --workers
+      - "1"
+    env_file:
+      - .env
+    logging:
+      driver: json-file
+      options:
+        max-size: 100m
+        max-file: "5"

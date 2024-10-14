@@ -1,0 +1,13 @@
+---
+
+- name: "Update compose"
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "/home/ubuntu/{{ app_dir }}/compose.yaml"
+  become: yes
+  become_user: ubuntu
+  with_items:
+    - mpm_version: "{{ mpm_version }}"
+      internal_domain: "{{ internal_domain }}"
+      external_domain: "{{ external_domain }}"
+

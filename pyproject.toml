@@ -23,7 +23,7 @@ rioxarray="0.15.0"
 shapely="2.0.1"
 numpy = "< 2"
 geopandas = "^1.0.1"
-cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", tag = "v0.4.8" }
+cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", branch = "mineral_sites" }
 PyYAML = "^6.0.1"
 pydantic-settings = "^2.1.0"
 httptools = "^0.6.1"
@@ -45,6 +45,8 @@ flake8-print = "^5.0.0"
 autoflake = "^2.2.0"
 uvicorn = "^0.23.2"
 pytest = "^8.2.2"
+ruff = "^0.3.4"
+
 
 [build-system]
 requires = ["poetry-core"]

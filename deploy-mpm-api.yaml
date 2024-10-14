@@ -1,0 +1,22 @@
+- name: Deploy MPM Api
+  hosts: mpm-api
+  gather_facts: True
+
+  vars:
+    health_check: http://0.0.0.0:8082/health/check
+    health_ok_status: 204
+    app_dir: api
+    docker_pull: True
+    docker_stop: True
+    extra_dirs: []
+    polymer_env: |
+      CPL_CURL_VERBOSE=1
+      MPM_API_CDR_S3_ENDPOINT_URL="https://s3.amazonaws.com"
+      MPM_API_CDR_BEARER_TOKEN="Bearer {{ cdr_mpm_api_key }}"
+      MPM_API_CDR_PUBLIC_BUCKET="public.cdr.land"
+  roles:
+    - setup
+    - segmentation-api
+    - dockerstart
+    - healthcheck
+
