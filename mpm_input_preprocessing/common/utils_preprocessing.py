@@ -3,7 +3,8 @@ import rasterio
 
 import numpy as np
 import geopandas as gpd
-
+import logging
+from logging import Logger
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
 from scipy.ndimage import distance_transform_edt
 from pathlib import Path
@@ -11,12 +12,84 @@ from rasterio.warp import reproject
 from rasterio.fill import fillnodata
 from rasterio.mask import mask
 from rasterio.features import rasterize
-from typing import List, Dict, Optional, Union, Literal
-from pathlib import Path
+from typing import List, Optional, Union, Literal
+from shapely.geometry import shape
 
-from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute, ImputeMethod
+from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute
+
+logger: Logger = logging.getLogger(__name__)
+
+
+def process_label_raster(
+    *,
+    vector_dir: Path,
+    cma,
+    feature_layer_info,
+    aoi,
+    reference_layer_path: Path,
+    dilation_size: int = 5,
+):
+    warped_shp_file = vector_dir / "_warped.shp"
+    rasterized_file = vector_dir / "_rasterized.tif"
+    clipped_file = vector_dir / "_clipped.tif"
+    aligned_file = vector_dir / "_aligned.tif"
+    dilated_file = vector_dir / "_processed.tif"
+
+    geometry = [
+        shape(feature.get("geom"))
+        for feature in feature_layer_info.get("evidence_features", [])
+    ]
+    extras = [
+        shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
+    ]
+    gdf = gpd.GeoDataFrame(
+        {"feature_epsg_4326": geometry + extras},
+        geometry="feature_epsg_4326",
+        crs="EPSG:4326",
+    )
+    gdf = gdf.to_crs(cma.crs)
+
+    aoi_gdf = gpd.read_file(aoi)
+    clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
+
+    clipped_gdf.to_file(warped_shp_file)
+    vector_to_raster(
+        src_vector_path=warped_shp_file,
+        dst_raster_path=rasterized_file,
+        dst_res_x=cma.resolution[0],
+        dst_res_y=cma.resolution[1],
+        fill_value=0.0,
+        aoi_path=aoi,
+    )
+    clip_raster(
+        src_raster_path=rasterized_file, dst_raster_path=clipped_file, aoi_path=aoi
+    )
+    align_rasters(
+        src_raster_path=clipped_file,
+        dst_raster_path=aligned_file,
+        reference_raster_path=reference_layer_path,
+        resampling=rasterio.warp.Resampling.nearest,
+    )
+    dilate_raster(
+        src_raster_path=aligned_file,
+        dst_raster_path=dilated_file,
+        dilation_size=dilation_size,
+        label_raster=True,
+    )
+
+    ### Find out the number of rasterized deposits ###
+    # Load the raster data
+    with rasterio.open(dilated_file) as src:
+        raster_data = src.read(1)
+
+    num_of_deposits = np.count_nonzero(raster_data == 1)
+    logger.info(f"num_of_deposits:{num_of_deposits}")
+
+    return dilated_file
+
 
 def preprocess_raster(
+    *,
     layer: Path,
     aoi: Path,
     reference_layer_path: Path,
@@ -25,7 +98,7 @@ def preprocess_raster(
     dst_res_x: float,
     dst_res_y: float,
     transform_methods: List,
-    default_crs: str = 'EPSG:4326',
+    default_crs: str = "EPSG:4326",
     default_nodata: float = np.nan,
     warp_resampling_method=rasterio.warp.Resampling.bilinear,
     imputation_size: int = 100,
@@ -64,30 +137,31 @@ def preprocess_raster(
     """
     # get UI specified preprocessing methods
     transform_methods_dict = {
-        'transform': None,
-        'impute_method': None,
-        'impute_window_size': None,
-        'scaling': 'standard'
+        "transform": None,
+        "impute_method": None,
+        "impute_window_size": None,
+        "scaling": "standard",
     }
+    logger.info(transform_methods)
     for method in transform_methods:
         if isinstance(method, TransformMethod):
-            transform_methods_dict['transform'] = method.value
+            transform_methods_dict["transform"] = method.value
         elif isinstance(method, Impute):
-            transform_methods_dict['impute_method'] = method.impute_method.value
-            transform_methods_dict['impute_window_size'] = method.window_size
+            transform_methods_dict["impute_method"] = method.impute_method.value
+            transform_methods_dict["impute_window_size"] = method.window_size
         elif isinstance(method, ScalingType):
-            transform_methods_dict['scaling'] = method.value
+            transform_methods_dict["scaling"] = method.value
         else:
             raise ValueError("Unknown method")
 
-    formatted_file = layer.parent / (layer.stem +"_formatted" + layer.suffix)
-    warped_file = layer.parent / (layer.stem +"_warped" + layer.suffix)
-    imputed_file = layer.parent / (layer.stem +"_imputed" + layer.suffix)
-    clipped_file = layer.parent / (layer.stem +"_clipped" + layer.suffix)
-    aligned_file = layer.parent / (layer.stem +"_aligned" + layer.suffix)
-    dilated_file = layer.parent / (layer.stem +"_dilated" + layer.suffix)
-    olr_file = layer.parent / (layer.stem +"_olr" + layer.suffix)
-    if transform_methods_dict['transform']:
+    formatted_file = layer.parent / (layer.stem + "_formatted" + layer.suffix)
+    warped_file = layer.parent / (layer.stem + "_warped" + layer.suffix)
+    imputed_file = layer.parent / (layer.stem + "_imputed" + layer.suffix)
+    clipped_file = layer.parent / (layer.stem + "_clipped" + layer.suffix)
+    aligned_file = layer.parent / (layer.stem + "_aligned" + layer.suffix)
+    dilated_file = layer.parent / (layer.stem + "_dilated" + layer.suffix)
+    olr_file = layer.parent / (layer.stem + "_olr" + layer.suffix)
+    if transform_methods_dict["transform"]:
         scaled_file = layer.parent / (layer.stem + "_scaled" + layer.suffix)
         transform_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
     else:
@@ -97,7 +171,7 @@ def preprocess_raster(
         src_raster_path=layer,
         dst_raster_path=formatted_file,
         default_crs=default_crs,
-        default_nodata=default_nodata
+        default_nodata=default_nodata,
     )
     warp_raster(
         src_raster_path=formatted_file,
@@ -106,50 +180,48 @@ def preprocess_raster(
         dst_nodata=dst_nodata,
         dst_res_x=dst_res_x,
         dst_res_y=dst_res_y,
-        resampling=warp_resampling_method
+        resampling=warp_resampling_method,
     )
-    dilate_raster( # impute
+    dilate_raster(  # impute
         src_raster_path=warped_file,
         dst_raster_path=imputed_file,
         dilation_size=imputation_size,
         smoothing_iterations=imputation_smoothing_iterations,
-        label_raster=False
+        label_raster=False,
     )
     clip_raster(
-        src_raster_path=imputed_file,
-        dst_raster_path=clipped_file,
-        aoi_path = str(aoi)
+        src_raster_path=imputed_file, dst_raster_path=clipped_file, aoi_path=str(aoi)
     )
     align_rasters(
         src_raster_path=clipped_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
-        resampling=align_resampling_method
+        resampling=align_resampling_method,
     )
-    dilate_raster( # dilate
+    dilate_raster(  # dilate
         src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
         dilation_size=dilation_window_size,
         smoothing_iterations=dilation_smoothing_iterations,
-        label_raster=False
+        label_raster=False,
     )
     remove_outliers_tukey_raster(
         src_raster_path=dilated_file,
         dst_raster_path=olr_file,
-        k=tukey_fences_multiplier
+        k=tukey_fences_multiplier,
     )
     scale_raster(
         src_raster_path=olr_file,
         dst_raster_path=scaled_file,
-        scaling_type=transform_methods_dict['scaling'],
+        scaling_type=transform_methods_dict["scaling"],
         min_value=scale_min_value,
-        max_value=scale_max_value
+        max_value=scale_max_value,
     )
-    if transform_methods_dict['transform']:
+    if transform_methods_dict["transform"]:
         transform_raster(
             src_raster_path=scaled_file,
             dst_raster_path=transform_file,
-            method=transform_methods_dict['transform']
+            method=transform_methods_dict["transform"],
         )
         return transform_file
     else:
@@ -157,6 +229,7 @@ def preprocess_raster(
 
 
 def preprocess_vector(
+    *,
     layer: Path,
     aoi: Path,
     reference_layer_path: Path,
@@ -198,94 +271,105 @@ def preprocess_vector(
     """
     # get UI specified preprocessing methods
     transform_methods_dict = {
-        'transform': None,
-        'impute_method': None,
-        'impute_window_size': None,
-        'scaling': 'standard'
+        "transform": None,
+        "impute_method": None,
+        "impute_window_size": None,
+        "scaling": "standard",
     }
     for method in transform_methods:
         if isinstance(method, TransformMethod):
-            transform_methods_dict['transform'] = method.value
+            transform_methods_dict["transform"] = method.value
         elif isinstance(method, Impute):
-            transform_methods_dict['impute_method'] = method.impute_method.value
-            transform_methods_dict['impute_window_size'] = method.window_size
+            transform_methods_dict["impute_method"] = method.impute_method.value
+            transform_methods_dict["impute_window_size"] = method.window_size
         elif isinstance(method, ScalingType):
-            transform_methods_dict['scaling'] = method.value
+            transform_methods_dict["scaling"] = method.value
         else:
             raise ValueError("Unknown method")
 
     # gets vector file path
     shp_file = find_shapefiles(layer.parent / layer.stem)
-    if len(shp_file) > 1 or len(shp_file) == 0: raise Exception(f"Cannot process vector file {layer}.")
+    if len(shp_file) > 1 or len(shp_file) == 0:
+        raise Exception(f"Cannot process vector file {layer}.")
     shp_file = Path(shp_file[0])
     # prepares preprocessing file names
-    warped_shp_file = layer.parent / layer.stem / (shp_file.stem + "_warped" + shp_file.suffix)
+    warped_shp_file = (
+        layer.parent / layer.stem / (shp_file.stem + "_warped" + shp_file.suffix)
+    )
     rasterized_file = layer.parent / (layer.stem + "_rasterized.tif")
-    proximity_file = rasterized_file.parent / (rasterized_file.stem +"_proximity" + rasterized_file.suffix)
-    clipped_file = rasterized_file.parent / (rasterized_file.stem +"_clipped" + rasterized_file.suffix)
-    aligned_file = rasterized_file.parent / (rasterized_file.stem +"_aligned" + rasterized_file.suffix)
-    dilated_file = rasterized_file.parent / (rasterized_file.stem +"_dilated" + rasterized_file.suffix)
-    olr_file = rasterized_file.parent / (rasterized_file.stem +"_olr" + rasterized_file.suffix)
-    if transform_methods_dict['transform']:
+    proximity_file = rasterized_file.parent / (
+        rasterized_file.stem + "_proximity" + rasterized_file.suffix
+    )
+    clipped_file = rasterized_file.parent / (
+        rasterized_file.stem + "_clipped" + rasterized_file.suffix
+    )
+    aligned_file = rasterized_file.parent / (
+        rasterized_file.stem + "_aligned" + rasterized_file.suffix
+    )
+    dilated_file = rasterized_file.parent / (
+        rasterized_file.stem + "_dilated" + rasterized_file.suffix
+    )
+    olr_file = rasterized_file.parent / (
+        rasterized_file.stem + "_olr" + rasterized_file.suffix
+    )
+    if transform_methods_dict["transform"]:
         scaled_file = layer.parent / (layer.stem + "_scaled" + layer.suffix)
         transform_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
     else:
         scaled_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
 
     warp_vector(
-        src_vector_path = shp_file,
-        dst_vector_path = warped_shp_file,
-        dst_crs = dst_crs,
+        src_vector_path=shp_file,
+        dst_vector_path=warped_shp_file,
+        dst_crs=dst_crs,
     )
     vector_to_raster(
         src_vector_path=warped_shp_file,
         dst_raster_path=rasterized_file,
-        dst_res_x = dst_res_x,
-        dst_res_y = dst_res_y,
-        burn_value = burn_value,
-        fill_value = fill_value,
-        dst_nodata = dst_nodata
+        dst_res_x=dst_res_x,
+        dst_res_y=dst_res_y,
+        burn_value=burn_value,
+        fill_value=fill_value,
+        dst_nodata=dst_nodata,
     )
     proximity_raster(
         src_raster_path=rasterized_file,
         dst_raster_path=proximity_file,
-        src_burn_value=burn_value
+        src_burn_value=burn_value,
     )
     clip_raster(
-        src_raster_path=proximity_file,
-        dst_raster_path=clipped_file,
-        aoi_path = str(aoi)
+        src_raster_path=proximity_file, dst_raster_path=clipped_file, aoi_path=str(aoi)
     )
     align_rasters(
         src_raster_path=clipped_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
-        resampling=align_resampling_method
+        resampling=align_resampling_method,
     )
-    dilate_raster( # dilate
+    dilate_raster(  # dilate
         src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
         dilation_size=dilation_window_size,
         smoothing_iterations=dilation_smoothing_iterations,
-        label_raster=False
+        label_raster=False,
     )
     remove_outliers_tukey_raster(
         src_raster_path=dilated_file,
         dst_raster_path=olr_file,
-        k=tukey_fences_multiplier
+        k=tukey_fences_multiplier,
     )
     scale_raster(
         src_raster_path=olr_file,
         dst_raster_path=scaled_file,
-        scaling_type=transform_methods_dict['scaling'],
+        scaling_type=transform_methods_dict["scaling"],
         min_value=scale_min_value,
-        max_value=scale_max_value
+        max_value=scale_max_value,
     )
-    if transform_methods_dict['transform']:
+    if transform_methods_dict["transform"]:
         transform_raster(
             src_raster_path=scaled_file,
             dst_raster_path=transform_file,
-            method=transform_methods_dict['transform']
+            method=transform_methods_dict["transform"],
         )
         return transform_file
     else:
@@ -296,7 +380,7 @@ def preprocess_vector(
 def format_nodata_crs(
     src_raster_path,
     dst_raster_path,
-    default_crs: str = 'EPSG:4326',
+    default_crs: str = "EPSG:4326",
     default_nodata: float = np.nan,
 ) -> None:
     """
@@ -322,18 +406,18 @@ def format_nodata_crs(
         metadata.update(dtype=rasterio.float32, nodata=default_nodata, crs=CRS)
 
     # Save the modified raster to the output path
-    with rasterio.open(dst_raster_path, 'w', **metadata) as dst:
+    with rasterio.open(dst_raster_path, "w", **metadata) as dst:
         dst.write(raster_data.astype(rasterio.float32), 1)
 
 
 def warp_raster(
     src_raster_path,
     dst_raster_path,
-    dst_crs: str = 'ESRI:102008',
+    dst_crs: str = "ESRI:102008",
     dst_nodata: float = np.nan,
     dst_res_x: float = 500.0,
     dst_res_y: float = 500.0,
-    resampling=rasterio.warp.Resampling.bilinear
+    resampling=rasterio.warp.Resampling.bilinear,
 ) -> None:
     """
     Reproject a raster to a new CRS using rasterio.warp.reproject.
@@ -349,23 +433,29 @@ def warp_raster(
     with rasterio.open(src_raster_path) as src:
         # Calculate transform and dimensions for output raster
         transform, width, height = rasterio.warp.calculate_default_transform(
-            src.crs, dst_crs, src.width, src.height, *src.bounds,
-            resolution=(dst_res_x, dst_res_y) if dst_res_x and dst_res_y else None
+            src.crs,
+            dst_crs,
+            src.width,
+            src.height,
+            *src.bounds,
+            resolution=(dst_res_x, dst_res_y) if dst_res_x and dst_res_y else None,
         )
 
         # Update metadata for the output raster
         metadata = src.meta.copy()
-        metadata.update({
-            'crs': dst_crs,
-            'transform': transform,
-            'width': width,
-            'height': height,
-            'nodata': dst_nodata,
-            'dtype': src.dtypes[0]
-        })
+        metadata.update(
+            {
+                "crs": dst_crs,
+                "transform": transform,
+                "width": width,
+                "height": height,
+                "nodata": dst_nodata,
+                "dtype": src.dtypes[0],
+            }
+        )
 
         # Reproject and write to the output file
-        with rasterio.open(dst_raster_path, 'w', **metadata) as dst:
+        with rasterio.open(dst_raster_path, "w", **metadata) as dst:
             for i in range(1, src.count + 1):
                 rasterio.warp.reproject(
                     source=rasterio.band(src, i),
@@ -375,7 +465,7 @@ def warp_raster(
                     dst_transform=transform,
                     dst_crs=dst_crs,
                     resampling=resampling,
-                    dst_nodata=dst_nodata
+                    dst_nodata=dst_nodata,
                 )
 
 
@@ -384,7 +474,7 @@ def dilate_raster(
     dst_raster_path,
     dilation_size: int = 100,
     smoothing_iterations: int = 0,
-    label_raster: bool = False
+    label_raster: bool = False,
 ) -> None:
     """
     Fill NoData values in a raster using rasterio's fillnodata function.
@@ -403,16 +493,15 @@ def dilate_raster(
         filled_data = fillnodata(
             data,
             max_search_distance=dilation_size,
-            smoothing_iterations=smoothing_iterations
+            smoothing_iterations=smoothing_iterations,
         )
         if label_raster:
-            filled_data[label_msk & ~np.isnan(filled_data)] = 0.
-
+            filled_data[label_msk & ~np.isnan(filled_data)] = 0.0
 
         # Copy metadata and write the filled raster
         profile = src.profile
 
-    with rasterio.open(dst_raster_path, 'w', **profile) as dst:
+    with rasterio.open(dst_raster_path, "w", **profile) as dst:
         dst.write(filled_data, 1)
 
 
@@ -436,12 +525,18 @@ def clip_raster(
     # Open the raster file
     with rasterio.open(src_raster_path) as src:
         # Clip the raster with the shapes from the shapefile
-        out_image, out_transform = mask(src, shapes.geometry, crop=True, all_touched=True)
+        out_image, out_transform = mask(
+            src, shapes.geometry, crop=True, all_touched=True
+        )
         out_meta = src.meta.copy()
-        out_meta.update({"driver": "GTiff",
-                        "height": out_image.shape[1],
-                        "width": out_image.shape[2],
-                        "transform": out_transform})
+        out_meta.update(
+            {
+                "driver": "GTiff",
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": out_transform,
+            }
+        )
 
     # Save the clipped raster
     with rasterio.open(dst_raster_path, "w", **out_meta) as dest:
@@ -452,7 +547,7 @@ def align_rasters(
     src_raster_path,
     dst_raster_path,
     reference_raster_path,
-    resampling=rasterio.warp.Resampling.bilinear
+    resampling=rasterio.warp.Resampling.bilinear,
 ) -> None:
     """
     Aligns a target raster to a reference raster using rasterio.
@@ -472,18 +567,19 @@ def align_rasters(
 
     # Open the target raster
     with rasterio.open(src_raster_path) as target:
-
         # Set up the metadata for the aligned output raster
         aligned_meta = target.meta.copy()
-        aligned_meta.update({
-            'crs': ref_crs,
-            'transform': ref_transform,
-            'width': ref_width,
-            'height': ref_height
-        })
+        aligned_meta.update(
+            {
+                "crs": ref_crs,
+                "transform": ref_transform,
+                "width": ref_width,
+                "height": ref_height,
+            }
+        )
 
         # Perform the alignment by reprojecting the target raster
-        with rasterio.open(dst_raster_path, 'w', **aligned_meta) as aligned_raster:
+        with rasterio.open(dst_raster_path, "w", **aligned_meta) as aligned_raster:
             for i in range(1, target.count + 1):  # Loop through each band
                 reproject(
                     source=rasterio.band(target, i),
@@ -492,14 +588,12 @@ def align_rasters(
                     src_crs=target.crs,
                     dst_transform=ref_transform,
                     dst_crs=ref_crs,
-                    resampling=resampling
+                    resampling=resampling,
                 )
 
 
 def remove_outliers_tukey_raster(
-    src_raster_path,
-    dst_raster_path,
-    k: float = 1.5
+    src_raster_path, dst_raster_path, k: float = 1.5
 ) -> None:
     """
     Remove outliers from a raster image using the Tukey fences method.
@@ -526,7 +620,7 @@ def remove_outliers_tukey_raster(
         metadata = src.meta
         metadata.update(dtype=rasterio.float32)
 
-    with rasterio.open(dst_raster_path, 'w', **metadata) as dst:
+    with rasterio.open(dst_raster_path, "w", **metadata) as dst:
         dst.write(raster_data.astype(rasterio.float32), 1)
 
 
@@ -535,7 +629,7 @@ def scale_raster(
     dst_raster_path,
     scaling_type: Literal["standard", "minmax", "maxabs"] = "standard",
     min_value: float = 0.0,
-    max_value: float = 1.0
+    max_value: float = 1.0,
 ) -> None:
     """
     Standard scale a raster image using scikit-learn's StandardScaler.
@@ -555,9 +649,7 @@ def scale_raster(
             scaler = StandardScaler()
         elif scaling_type == "minmax":
             assert min_value < max_value, "min_value must be less than max_value."
-            scaler = MinMaxScaler(
-                feature_range = (min_value, max_value)
-            )
+            scaler = MinMaxScaler(feature_range=(min_value, max_value))
         elif scaling_type == "maxabs":
             scaler = MaxAbsScaler()
         else:
@@ -568,14 +660,14 @@ def scale_raster(
         metadata = src.meta
         metadata.update(dtype=rasterio.float32)
 
-    with rasterio.open(dst_raster_path, 'w', **metadata) as dst:
+    with rasterio.open(dst_raster_path, "w", **metadata) as dst:
         dst.write(scaled_raster_data.astype(rasterio.float32), 1)
 
 
 def warp_vector(
     src_vector_path,
     dst_vector_path,
-    dst_crs: str = 'ESRI:102008',
+    dst_crs: str = "ESRI:102008",
 ) -> None:
     """
     Reproject a vector file to a different CRS.
@@ -592,7 +684,7 @@ def warp_vector(
     gdf = gdf.to_crs(dst_crs)
 
     # Save the reprojected vector
-    gdf.to_file(dst_vector_path, driver='ESRI Shapefile')
+    gdf.to_file(dst_vector_path, driver="ESRI Shapefile")
 
 
 def vector_to_raster(
@@ -603,7 +695,7 @@ def vector_to_raster(
     burn_value: float = 1.0,
     fill_value: float = None,
     dst_nodata: float = np.nan,
-    aoi_path: Optional[Union[Path, None]] = None
+    aoi_path: Optional[Union[Path, None]] = None,
 ) -> None:
     """
     Rasterize a vector file to a raster with specific resolution.
@@ -639,8 +731,18 @@ def vector_to_raster(
     )
 
     # Write to output raster
-    with rasterio.open(dst_raster_path, 'w', driver='GTiff', height=height, width=width, count=1,
-            dtype=rasterio.float32, crs=gdf.crs, transform=transform, nodata=dst_nodata) as dst:
+    with rasterio.open(
+        dst_raster_path,
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype=rasterio.float32,
+        crs=gdf.crs,
+        transform=transform,
+        nodata=dst_nodata,
+    ) as dst:
         dst.write(raster, 1)
 
 
@@ -670,12 +772,10 @@ def proximity_raster(
 
         # Update metadata for the output raster
         dst_meta = src.meta.copy()
-        dst_meta.update({
-            'dtype': 'float32'
-        })
+        dst_meta.update({"dtype": "float32"})
 
         # Write the proximity raster to the destination path
-        with rasterio.open(dst_raster_path, 'w', **dst_meta) as dst:
+        with rasterio.open(dst_raster_path, "w", **dst_meta) as dst:
             dst.write(proximity.astype(np.float32), 1)
 
 
@@ -692,15 +792,13 @@ def find_shapefiles(directory) -> List[Path]:
     shapefiles = []
     for root, _, files in os.walk(directory):
         for file in files:
-            if file.endswith('.shp'):
+            if file.endswith(".shp"):
                 shapefiles.append(os.path.join(root, file))
     return shapefiles
 
 
 def transform_raster(
-    src_raster_path,
-    dst_raster_path,
-    method: str = Literal["log","abs","sqrt"]
+    src_raster_path, dst_raster_path, method: str = Literal["log", "abs", "sqrt"]
 ) -> None:
     """
     Apply a transformation function to a raster image.
@@ -715,7 +813,7 @@ def transform_raster(
         metadata.update(dtype=rasterio.float32)
 
         raster_data = src.read(1)
-        raster_data = np.where(raster_data == metadata['nodata'], np.nan, raster_data)
+        raster_data = np.where(raster_data == metadata["nodata"], np.nan, raster_data)
 
         if method == "log":
             transformed_data = np.log(np.where(raster_data > 0, raster_data, np.nan))
@@ -726,8 +824,9 @@ def transform_raster(
         else:
             raise Exception(f"Unknown transform function {method}.")
 
-        transformed_data = np.where(np.isnan(transformed_data), metadata['nodata'], transformed_data)
+        transformed_data = np.where(
+            np.isnan(transformed_data), metadata["nodata"], transformed_data
+        )
 
-    with rasterio.open(dst_raster_path, 'w', **metadata) as dst:
+    with rasterio.open(dst_raster_path, "w", **metadata) as dst:
         dst.write(transformed_data.astype(rasterio.float32), 1)
-
