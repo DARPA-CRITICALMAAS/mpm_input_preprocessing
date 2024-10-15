@@ -1,7 +1,7 @@
 services:
 
   georef:
-    image: registry.gitlab.com/jataware/mpm_input_preprocessing:{{ mpm_version }}
+    image: registry.gitlab.com/jataware/mpm:{{ mpm_version }}
     hostname: mpm-api.${INTERNAL_DOMAIN}
     ports:
       - 8082:8082
