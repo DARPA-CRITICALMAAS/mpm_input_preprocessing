@@ -307,7 +307,9 @@ def preprocess_vector(
     olr_file = layer.parent / (layer.stem + "_olr" + rasterized_file.suffix)
     scaled_file = layer.parent / (layer.stem + "_scaled" + rasterized_file.suffix)
     if transform_methods_dict["transform"]:
-        transform_file = layer.parent / (layer.stem + "_transformed" + rasterized_file.suffix)
+        transform_file = layer.parent / (
+            layer.stem + "_transformed" + rasterized_file.suffix
+        )
     dilated_file = layer.parent / (layer.stem + "_processed" + rasterized_file.suffix)
 
     warp_vector(
