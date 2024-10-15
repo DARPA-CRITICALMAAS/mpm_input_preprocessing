@@ -1,12 +1,11 @@
 # Application Definition
 app_name            = "mpm"
 app_cost_code       = "USGS"
-app_internal_domain = "?"
-app_external_domain = "?"
+app_internal_domain = "mpm_internal"
 
 # Key Pair
-public_key_path = "~/.ssh/_.pub"
-private_key_path = "~/.ssh/_"
+public_key_path = "~/.ssh/id_mpm_rsa.pub"
+private_key_path = "~/.ssh/id_mpm_rsa"
 
 # AWS
 aws_region = "us-east-1"
