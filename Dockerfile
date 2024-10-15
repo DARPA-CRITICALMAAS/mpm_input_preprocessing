@@ -17,4 +17,4 @@ WORKDIR /home/apps/mpm_input_preprocessing
 RUN pip install --upgrade pip --user
 RUN pip install --user /home/apps/mpm_input_preprocessing
 
-CMD ["uvicorn", "mpm_input_preprocessing.http.api:api", "--host", "0.0.0.0", "--port", "8082", "--log-config", "logging.yaml", "--workers", "1", "--reload"]
+CMD ["uvicorn", "mpm_input_preprocessing.server.api:api", "--host", "0.0.0.0", "--port", "8082", "--log-config", "logging.yaml", "--workers", "1", "--reload"]

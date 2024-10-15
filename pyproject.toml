@@ -23,10 +23,14 @@ rioxarray="0.15.0"
 shapely="2.0.1"
 numpy = "< 2"
 geopandas = "^1.0.1"
-cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", tag = "v0.4.8" }
+cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", tag = "v0.4.10" }
 PyYAML = "^6.0.1"
 pydantic-settings = "^2.1.0"
 httptools = "^0.6.1"
+tqdm = "^4.66.5"
+fiona = "^1.10.1"
+requests = "^2.32.3"
+scikit-learn = "^1.5.2"
 
 [tool.poetry.scripts]
 dev = "dev.run:main"
