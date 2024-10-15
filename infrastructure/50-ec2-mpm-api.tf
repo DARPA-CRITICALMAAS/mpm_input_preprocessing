@@ -1,11 +1,4 @@
 
-variable "mpm-api_server_spec" {
-  type = object({
-    instance_type = string
-    volume_size = number
-  })
-  description = "mpm-api server"
-}
 
 resource "aws_iam_role" "ec2_basic_role" {
   name = "${lower(var.app_name)}-ec2-basic-role"
@@ -39,6 +32,25 @@ resource "aws_iam_instance_profile" "ec2_basic_profile" {
 data "aws_subnet" "default_subnet" {
   default_for_az = true  
 }
+
+data "aws_ami" "ubuntu-linux-2204-amd64" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+resource "aws_key_pair" "public_key_pair" {
+  key_name   = "${lower(var.app_name)}-deployment-key"
+  public_key = "${file(var.public_key_path)}"
+}
+
 
 # Create EC2 Instance
 resource "aws_instance" "mpm-api_server" {
