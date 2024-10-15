@@ -23,7 +23,7 @@ rioxarray="0.15.0"
 shapely="2.0.1"
 numpy = "< 2"
 geopandas = "^1.0.1"
-cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", branch = "mineral_sites" }
+cdr_schemas = { git = "https://github.com/DARPA-CRITICALMAAS/cdr_schemas.git", tag = "v0.4.10" }
 PyYAML = "^6.0.1"
 pydantic-settings = "^2.1.0"
 httptools = "^0.6.1"
