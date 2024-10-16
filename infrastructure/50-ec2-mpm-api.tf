@@ -23,7 +23,7 @@ resource "aws_instance" "mpm-api_server" {
   instance_type          = var.mpm-api_server_spec.instance_type
   subnet_id              = aws_subnet.public-subnet.id
   iam_instance_profile   = aws_iam_instance_profile.ec2_basic_profile.name
-  vpc_security_group_ids = [aws_security_group.sg-ssh-only.id]
+  vpc_security_group_ids = [aws_security_group.sg-ssh-only.id, aws_security_group.sg-internal.id]
   source_dest_check      = false
   key_name               = aws_key_pair.public_key_pair.key_name
 
@@ -57,3 +57,11 @@ resource "aws_instance" "mpm-api_server" {
   }
 }
 
+
+resource "aws_route53_record" "mpm-api_server_dns" {
+  zone_id = aws_route53_zone.private.zone_id
+  name    = aws_instance.mpm-api_server.tags["dns"]
+  type    = "A"
+  ttl     = "300"
+  records = [aws_instance.mpm-api_server.private_ip]
+}

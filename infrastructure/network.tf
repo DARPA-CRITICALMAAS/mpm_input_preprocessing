@@ -94,3 +94,12 @@ resource "aws_route_table_association" "public-rt-association" {
   subnet_id      = each.value
   route_table_id = aws_route_table.public-rt.id
 }
+
+
+resource "aws_route53_zone" "private" {
+  name = var.app_internal_domain
+
+  vpc {
+    vpc_id = aws_vpc.vpc.id
+  }
+}
