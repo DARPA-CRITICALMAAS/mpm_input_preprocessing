@@ -199,7 +199,7 @@ async def preprocess_evidence_layers(
                 layer.get("data_source", {}).get("data_source_id").encode("utf-8")
             )
             hash_object.update(
-                sorted(layer.get("transform_methods", [])).encode("utf-8")
+                str(sorted(layer.get("transform_methods", []))).encode("utf-8")
             )
             hex_dig = (
                 hash_object.hexdigest()
