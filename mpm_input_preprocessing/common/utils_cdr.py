@@ -171,12 +171,12 @@ async def send_label_layer(
         )
         logger.info(f"payload {payload}")
         logger.info("Finished")
-    await post_results(
-        file_name=f"{hex_dig}.tif",
-        file_path=pev_lyr_path,
-        data=payload,
-        file_logger=file_logger,
-    )
+        await post_results(
+            file_name=f"{hex_dig}.tif",
+            file_path=pev_lyr_path,
+            data=payload,
+            file_logger=file_logger,
+        )
 
 
 async def preprocess_evidence_layers(
