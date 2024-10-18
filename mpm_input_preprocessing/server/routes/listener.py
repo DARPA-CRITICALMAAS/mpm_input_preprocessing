@@ -57,6 +57,7 @@ async def event_handler(evt: Event):
                     cma=cma,
                     evidence_layers=evidence_layer_objects,
                     feature_layer_objects=feature_layer_objects,
+                    event_id=evt.id,
                     file_logger=file_logger,
                 )
             case _:
