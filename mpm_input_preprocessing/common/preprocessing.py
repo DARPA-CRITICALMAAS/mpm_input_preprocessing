@@ -27,6 +27,7 @@ async def preprocess(
     cma: CriticalMineralAssessment,
     evidence_layers: List[CreateProcessDataLayer],
     feature_layer_objects: List[CreateVectorProcessDataLayer],
+    event_id: str,
     file_logger,
 ):
     # SRI/Beak your code here.
@@ -74,19 +75,22 @@ async def preprocess(
             dst_nodata=np.nan,
             dst_res_x=cma.resolution[0],
             dst_res_y=cma.resolution[1],
+            event_id=event_id,
             file_logger=file_logger,
         )
 
-        dumped_feature_layers = [x.model_dump() for x in feature_layer_objects]
+        if len(feature_layer_objects) > 0:
+            dumped_feature_layers = [x.model_dump() for x in feature_layer_objects]
 
-        await send_label_layer(
-            vector_dir=vector_dir,
-            cma=cma,
-            feature_layer_objects=dumped_feature_layers,
-            aoi=aoi_geopkg_path,
-            reference_layer_path=reference_layer_path,
-            file_logger=file_logger,
-        )
+            await send_label_layer(
+                vector_dir=vector_dir,
+                cma=cma,
+                feature_layer_objects=dumped_feature_layers,
+                aoi=aoi_geopkg_path,
+                reference_layer_path=reference_layer_path,
+                event_id=event_id,
+                file_logger=file_logger,
+            )
 
 
 def test():

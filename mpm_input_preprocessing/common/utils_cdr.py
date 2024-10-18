@@ -127,6 +127,7 @@ async def send_label_layer(
     aoi,
     reference_layer_path,
     dilation_size: int = 5,
+    event_id: str,
     file_logger,
 ):
     for feature_layer_info in feature_layer_objects:
@@ -167,6 +168,7 @@ async def send_label_layer(
                     for x in feature_layer_info.get("evidence_features", [])
                 ],
                 "extra_geometries": feature_layer_info.get("extra_geometries", []),
+                "event_id": event_id,
             }
         )
         logger.info(f"payload {payload}")
@@ -188,6 +190,7 @@ async def preprocess_evidence_layers(
     dst_nodata: Union[None, float],
     dst_res_x: int,
     dst_res_y: int,
+    event_id: str,
     file_logger,
 ) -> List[Path]:
     pev_lyr_paths = []
@@ -238,6 +241,7 @@ async def preprocess_evidence_layers(
                         "system_version": app_settings.SYSTEM_VERSION,
                         "transform_methods": layer.get("transform_methods", []),
                         "label_raster": layer.get("label_raster", False),
+                        "event_id": event_id,
                     }
                 )
 
@@ -276,6 +280,7 @@ async def preprocess_evidence_layers(
                         "system_version": app_settings.SYSTEM_VERSION,
                         "transform_methods": layer.get("transform_methods", []),
                         "label_raster": layer.get("label_raster", False),
+                        "event_id": event_id,
                     }
                 )
 
