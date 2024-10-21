@@ -207,9 +207,9 @@ async def preprocess_evidence_layers(
             )
           
             hex_dig = (
-                hex_digest
+                str(hex_digest)
                 + "_"
-                + hash_obj2
+                + str(hash_obj2)
                 +"_"
                 + app_settings.SYSTEM
                 + "_"
