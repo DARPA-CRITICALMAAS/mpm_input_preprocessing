@@ -1,6 +1,6 @@
 import os
 import rasterio
-
+import json
 import numpy as np
 import geopandas as gpd
 import logging
@@ -144,6 +144,8 @@ def preprocess_raster(
     }
     logger.info(transform_methods)
     for method in transform_methods:
+        if "{" in method:
+            method = json.loads(method)
         if isinstance(method, TransformMethod):
             transform_methods_dict["transform"] = method.value
         elif isinstance(method, Impute):
