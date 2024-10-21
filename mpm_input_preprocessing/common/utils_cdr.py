@@ -196,17 +196,21 @@ async def preprocess_evidence_layers(
     pev_lyr_paths = []
     for idx, layer in tqdm(enumerate(evidence_layers)):
         try:
-            hash_object = hashlib.sha256()
+            hash_obj = hashlib.md5()
+            hash_obj.update(json.dumps(sorted(layer.get("transform_methods"))).encode("utf-8"))
+            hex_digest = hash_obj.hexdigest()
+    
+            hash_obj2 = hashlib.md5()
 
-            hash_object.update(
-                layer.get("data_source", {}).get("data_source_id").encode("utf-8")
+            hash_obj2.update(
+                layer.get("data_source", {}).get("data_source_id","").encode("utf-8")
             )
-            hash_object.update(
-                str(sorted(layer.get("transform_methods", []))).encode("utf-8")
-            )
+          
             hex_dig = (
-                hash_object.hexdigest()
+                hex_digest
                 + "_"
+                + hash_obj2
+                +"_"
                 + app_settings.SYSTEM
                 + "_"
                 + app_settings.SYSTEM_VERSION
