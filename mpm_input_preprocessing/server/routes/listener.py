@@ -47,10 +47,11 @@ async def event_handler(evt: Event):
                 logger.info(evt.payload)
                 evidence_layer_objects_formated=[]
                 for x in evt.payload.get("evidence_layers"):
-                    for method in x.get("transform_methods"):
+                    for i, method in enumerate(x.get("transform_methods")):
                         if "{" in method:
-                            method = json.loads(method)
-                    evidence_layer_objects_formated.append(method)
+                            x["transform_methods"][i] = json.loads(method)
+                        
+                    evidence_layer_objects_formated.append(x)
                 
                 evidence_layer_objects = [
                     CreateProcessDataLayer(**x)    
