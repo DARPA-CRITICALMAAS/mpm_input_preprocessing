@@ -1,6 +1,6 @@
 import logging
 from logging import Logger
-
+import json
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from cdr_schemas.events import Event
 from fastapi import Depends, Request, status
@@ -9,6 +9,7 @@ from cdr_schemas.cdr_responses.prospectivity import (
     CreateProcessDataLayer,
     CreateVectorProcessDataLayer,
 )
+
 
 import hashlib
 import hmac
@@ -44,15 +45,25 @@ async def event_handler(evt: Event):
             case Event(event="prospectivity_evidence_layers.process"):
                 logger.info("Received preprocess event payload!")
                 logger.info(evt.payload)
+                evidence_layer_objects_formated=[]
+                for x in evt.payload.get("evidence_layers"):
+                    for method in x.get("transform_methods"):
+                        if "{" in method:
+                            method = json.loads(method)
+                    evidence_layer_objects_formated.append(method)
+                
                 evidence_layer_objects = [
-                    CreateProcessDataLayer(**x)
-                    for x in evt.payload.get("evidence_layers")
+                    CreateProcessDataLayer(**x)    
+                    for x in evidence_layer_objects_formated
                 ]
+                
                 feature_layer_objects = [
                     CreateVectorProcessDataLayer(**x)
                     for x in evt.payload.get("vector_layers")
                 ]
+                
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
+                
                 await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects,

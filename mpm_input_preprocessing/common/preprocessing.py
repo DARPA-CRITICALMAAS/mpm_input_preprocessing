@@ -61,7 +61,7 @@ async def preprocess(
 
         # download evidence layers
         logger.info("Downloading evidence layers.")
-        dumped_evidence_layers = [x.model_dump() for x in evidence_layers]
+        dumped_evidence_layers = [x.model_dump(mode='json') for x in evidence_layers]
         evidence_layers = download_evidence_layers(dumped_evidence_layers, data_dir)
 
         # preprocess evidence layers
@@ -80,7 +80,7 @@ async def preprocess(
         )
 
         if len(feature_layer_objects) > 0:
-            dumped_feature_layers = [x.model_dump() for x in feature_layer_objects]
+            dumped_feature_layers = [x.model_dump(mode='json') for x in feature_layer_objects]
 
             await send_label_layer(
                 vector_dir=vector_dir,
