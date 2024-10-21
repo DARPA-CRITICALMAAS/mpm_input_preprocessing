@@ -145,14 +145,14 @@ def preprocess_raster(
     logger.info(transform_methods)
     for method in transform_methods:
         if "{" in method:
-            method = json.loads(method)
-        if isinstance(method, TransformMethod):
-            transform_methods_dict["transform"] = method.value
-        elif isinstance(method, Impute):
-            transform_methods_dict["impute_method"] = method.impute_method.value
-            transform_methods_dict["impute_window_size"] = method.window_size
-        elif isinstance(method, ScalingType):
-            transform_methods_dict["scaling"] = method.value
+            method_loaded = json.loads(method)
+            if "impute_method" in method_loaded:
+                transform_methods_dict["impute_method"] = method_loaded.get("impute_method")
+                transform_methods_dict["impute_window_size"] = method_loaded.get("window_size")
+        elif method in [t_method.value for t_method in TransformMethod]:
+            transform_methods_dict["transform"] = method
+        elif method in [s_method.value for s_method in ScalingType]:
+            transform_methods_dict["scaling"] = method
         else:
             raise ValueError("Unknown method")
 
