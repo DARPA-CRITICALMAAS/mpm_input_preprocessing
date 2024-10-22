@@ -197,7 +197,7 @@ async def preprocess_evidence_layers(
     for idx, layer in tqdm(enumerate(evidence_layers)):
         try:
             hash_obj = hashlib.md5()
-            hash_obj.update(json.dumps(sorted(layer.get("transform_methods"))).encode("utf-8"))
+            hash_obj.update(json.dumps(sorted([str(x) for x in layer.get("transform_methods",[])])).encode("utf-8"))
             hex_digest = hash_obj.hexdigest()
     
             hash_obj2 = hashlib.md5()
