@@ -45,26 +45,25 @@ async def event_handler(evt: Event):
             case Event(event="prospectivity_evidence_layers.process"):
                 logger.info("Received preprocess event payload!")
                 logger.info(evt.payload)
-                evidence_layer_objects_formated=[]
+                evidence_layer_objects_formated = []
                 for x in evt.payload.get("evidence_layers"):
                     for i, method in enumerate(x.get("transform_methods")):
                         if "{" in method:
                             x["transform_methods"][i] = json.loads(method)
-                        
+
                     evidence_layer_objects_formated.append(x)
-                
+
                 evidence_layer_objects = [
-                    CreateProcessDataLayer(**x)    
-                    for x in evidence_layer_objects_formated
+                    CreateProcessDataLayer(**x) for x in evidence_layer_objects_formated
                 ]
-                
+
                 feature_layer_objects = [
                     CreateVectorProcessDataLayer(**x)
                     for x in evt.payload.get("vector_layers")
                 ]
-                
+
                 cma = CriticalMineralAssessment.model_validate(evt.payload.get("cma"))
-                
+
                 await preprocess(
                     cma=cma,
                     evidence_layers=evidence_layer_objects,
