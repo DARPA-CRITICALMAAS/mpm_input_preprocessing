@@ -1,6 +1,5 @@
 import os
 import rasterio
-import json
 import numpy as np
 import geopandas as gpd
 import logging
@@ -144,13 +143,13 @@ def preprocess_raster(
     }
     logger.info(transform_methods)
     for method in transform_methods:
-        if isinstance(method, TransformMethod):
-            transform_methods_dict["transform"] = method.value
-        elif isinstance(method, Impute):
-            transform_methods_dict["impute_method"] = method.impute_method.value
-            transform_methods_dict["impute_window_size"] = method.window_size
-        elif isinstance(method, ScalingType):
-            transform_methods_dict["scaling"] = method.value
+        if method in [x.value for x in TransformMethod]:
+            transform_methods_dict["transform"] = method
+        elif method in [x.value for x in ScalingType]:
+            transform_methods_dict["scaling"] = method
+        elif isinstance(method, dict):
+            transform_methods_dict["impute_method"] = method.get("impute_method")
+            transform_methods_dict["impute_window_size"] = method.get("window_size")
         else:
             raise ValueError("Unknown method")
 
