@@ -155,8 +155,8 @@ def _update_nodata(
 
 def _initialize_data_for_rasterization(
     array: np.ndarray,
-    nodata_value: Optional[Union[int, float]],
-    fill_value: Optional[Union[int, float]],
+    nodata_value: Optional[int | float],
+    fill_value: Optional[int | float],
 ) -> Tuple[np.ndarray, Union[int, float], Union[int, float]]:
     """
     Initialize data for rasterization by adjusting the array data type and handling nodata and fill values.
@@ -257,7 +257,7 @@ def _cast_array_to_minimum_dtype(
     array: np.ndarray,
     value: Optional[int | float] = None,
     unify_integer_types: bool = False,
-) -> Tuple[np.ndarray, Union[int, float, None]]:
+) -> Tuple[np.ndarray, Optional[int | float]]:
     """
     Determine the minimum data type for the raster array.
 
