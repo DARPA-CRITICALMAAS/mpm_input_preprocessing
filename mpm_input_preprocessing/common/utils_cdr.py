@@ -321,43 +321,6 @@ async def preprocess_evidence_layers(
                     file_name=file_name,
                     file_logger=file_logger,
                 )
-                # pev_lyr_path = preprocess_vector(
-                #     layer=layer.get("local_file_path"),
-                #     aoi=aoi,
-                #     reference_layer_path=reference_layer_path,
-                #     dst_crs=dst_crs,
-                #     dst_nodata=dst_nodata,
-                #     dst_res_x=dst_res_x,
-                #     dst_res_y=dst_res_y,
-                #     transform_methods=evidence_layers[idx].get("transform_methods"),
-                # )
-                # payload = json.dumps(
-                #     {
-                #         "raw_data_info": [
-                #             {
-                #                 "id": layer.get("data_source", {}).get(
-                #                     "data_source_id"
-                #                 ),
-                #                 "raw_data_type": "vector",
-                #             }
-                #         ],
-                #         "extra_geometries": [],
-                #         "cma_id": cma_id,
-                #         "title": layer.get("title", "NeedToSetTitle"),
-                #         "system": app_settings.SYSTEM,
-                #         "system_version": app_settings.SYSTEM_VERSION,
-                #         "transform_methods": layer.get("transform_methods", []),
-                #         "label_raster": layer.get("label_raster", False),
-                #         "event_id": event_id,
-                #     }
-                # )
-
-                # await post_results(
-                #     file_name=f"{hex_dig}.tif",
-                #     file_path=pev_lyr_path,
-                #     data=payload,
-                #     file_logger=file_logger,
-                # )
 
         except Exception:
             file_logger.exception(f"ERROR processing layer: {layer}")

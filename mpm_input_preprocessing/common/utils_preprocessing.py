@@ -24,8 +24,7 @@ def vector_features_to_gdf(feature_layer_info, cma):
         shape(feature.get("geom"))
         for feature in feature_layer_info.get("evidence_features", [])
     ]
-    logger.info(geometry)
-    logger.info("wowowoowoowo")
+
     extras = [
         shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
     ]
@@ -34,7 +33,6 @@ def vector_features_to_gdf(feature_layer_info, cma):
         geometry="feature_epsg_4326",
         crs="EPSG:4326",
     )
-    logger.info(gdf.head())
     gdf = gdf.to_crs(cma.crs)
     return gdf
 
@@ -57,9 +55,11 @@ def process_label_raster(
     gdf = vector_features_to_gdf(feature_layer_info, cma)
 
     aoi_gdf = gpd.read_file(aoi)
+
     clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
-    logger.info(f"clipped gdf {clipped_gdf.head()}")
+
     clipped_gdf.to_file(warped_shp_file)
+
     vector_to_raster(
         src_vector_path=warped_shp_file,
         dst_raster_path=rasterized_file,
@@ -68,16 +68,18 @@ def process_label_raster(
         fill_value=0.0,
         aoi_path=aoi,
     )
-    logger.info("AVTGERSLKDSFJSLKDFJ")
+
     clip_raster(
         src_raster_path=rasterized_file, dst_raster_path=clipped_file, aoi_path=aoi
     )
+
     align_rasters(
         src_raster_path=clipped_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
         resampling=rasterio.warp.Resampling.nearest,
     )
+
     dilate_raster(
         src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
@@ -150,7 +152,7 @@ def preprocess_raster(
         "impute_window_size": None,
         "scaling": scaling_type,
     }
-    logger.info(transform_methods)
+
     for method in transform_methods:
         if method in [x.value for x in TransformMethod]:
             transform_methods_dict["transform"] = method
@@ -720,30 +722,18 @@ def vector_to_raster(
     """
     # Read the vector file
     gdf = gpd.read_file(src_vector_path)
-    logger.info(f"lines df {gdf.head()}")
 
     if aoi_path:
         aoi_gdf = gpd.read_file(aoi_path)
-        intersecting_lines = gdf[gdf.intersects(aoi_gdf.unary_union)]
-        if not intersecting_lines.empty:
-            logger.info(f"Intersecting lines:\n{intersecting_lines}")
-        else:
-            logger.info("No intersecting lines found.")
+
     # Get bounds and calculate transform
     minx, miny, maxx, maxy = aoi_gdf.total_bounds if aoi_path else gdf.total_bounds
-    logger.info(dst_res_x)
-    logger.info(maxx)
-    logger.info(minx)
     width = int((maxx - minx) / dst_res_x)
-    logger.info(width)
     height = int((maxy - miny) / dst_res_y)
-    logger.info(height)
     transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
-    logger.info(f"trans {transform}")
-    logger.info(f"fill_value{fill_value}")
     # Rasterize the geometries
     shapes = ((geom, burn_value) for geom in gdf.geometry)
-    logger.info(f"shapes {shapes}")
+
     raster = rasterize(
         shapes=shapes,
         out_shape=(height, width),

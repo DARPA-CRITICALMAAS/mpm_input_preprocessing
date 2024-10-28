@@ -39,7 +39,6 @@ async def preprocess(
     """
 
     logger.info("Start preprocess...")
-    logger.info(feature_layer_objects)
     # create directory where to save the processed layers
     # data_dir = Path("./data") / Path(cma.cma_id)
     # os.makedirs(data_dir, exist_ok=True)
@@ -56,8 +55,6 @@ async def preprocess(
         # download reference layer
         logger.info("Downloading reference layer.")
         reference_layer_path = download_reference_layer(cma, data_dir)
-
-        logger.info(evidence_layers)
 
         # download evidence layers
         logger.info("Downloading evidence layers.")
