@@ -19,6 +19,26 @@ from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute
 logger: Logger = logging.getLogger(__name__)
 
 
+def vector_features_to_gdf(feature_layer_info, cma):
+    geometry = [
+        shape(feature.get("geom"))
+        for feature in feature_layer_info.get("evidence_features", [])
+    ]
+    logger.info(geometry)
+    logger.info("wowowoowoowo")
+    extras = [
+        shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
+    ]
+    gdf = gpd.GeoDataFrame(
+        {"feature_epsg_4326": geometry + extras},
+        geometry="feature_epsg_4326",
+        crs="EPSG:4326",
+    )
+    logger.info(gdf.head())
+    gdf = gdf.to_crs(cma.crs)
+    return gdf
+
+
 def process_label_raster(
     *,
     vector_dir: Path,
@@ -34,23 +54,11 @@ def process_label_raster(
     aligned_file = vector_dir / "_aligned.tif"
     dilated_file = vector_dir / "_processed.tif"
 
-    geometry = [
-        shape(feature.get("geom"))
-        for feature in feature_layer_info.get("evidence_features", [])
-    ]
-    extras = [
-        shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
-    ]
-    gdf = gpd.GeoDataFrame(
-        {"feature_epsg_4326": geometry + extras},
-        geometry="feature_epsg_4326",
-        crs="EPSG:4326",
-    )
-    gdf = gdf.to_crs(cma.crs)
+    gdf = vector_features_to_gdf(feature_layer_info, cma)
 
     aoi_gdf = gpd.read_file(aoi)
     clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
-
+    logger.info(f"clipped gdf {clipped_gdf.head()}")
     clipped_gdf.to_file(warped_shp_file)
     vector_to_raster(
         src_vector_path=warped_shp_file,
@@ -60,6 +68,7 @@ def process_label_raster(
         fill_value=0.0,
         aoi_path=aoi,
     )
+    logger.info("AVTGERSLKDSFJSLKDFJ")
     clip_raster(
         src_raster_path=rasterized_file, dst_raster_path=clipped_file, aoi_path=aoi
     )
@@ -324,6 +333,7 @@ def preprocess_vector(
         burn_value=burn_value,
         fill_value=fill_value,
         dst_nodata=dst_nodata,
+        aoi_path=aoi,
     )
     proximity_raster(
         src_raster_path=rasterized_file,
@@ -710,18 +720,30 @@ def vector_to_raster(
     """
     # Read the vector file
     gdf = gpd.read_file(src_vector_path)
+    logger.info(f"lines df {gdf.head()}")
 
     if aoi_path:
         aoi_gdf = gpd.read_file(aoi_path)
-
+        intersecting_lines = gdf[gdf.intersects(aoi_gdf.unary_union)]
+        if not intersecting_lines.empty:
+            logger.info(f"Intersecting lines:\n{intersecting_lines}")
+        else:
+            logger.info("No intersecting lines found.")
     # Get bounds and calculate transform
     minx, miny, maxx, maxy = aoi_gdf.total_bounds if aoi_path else gdf.total_bounds
+    logger.info(dst_res_x)
+    logger.info(maxx)
+    logger.info(minx)
     width = int((maxx - minx) / dst_res_x)
+    logger.info(width)
     height = int((maxy - miny) / dst_res_y)
+    logger.info(height)
     transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
-
+    logger.info(f"trans {transform}")
+    logger.info(f"fill_value{fill_value}")
     # Rasterize the geometries
     shapes = ((geom, burn_value) for geom in gdf.geometry)
+    logger.info(f"shapes {shapes}")
     raster = rasterize(
         shapes=shapes,
         out_shape=(height, width),

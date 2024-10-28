@@ -13,10 +13,12 @@ from logging import Logger
 import json
 import hashlib
 
+
 from .utils_preprocessing import (
     preprocess_raster,
     preprocess_vector,
     process_label_raster,
+    vector_features_to_gdf,
 )
 
 from ..settings import app_settings
@@ -119,26 +121,23 @@ async def post_results(file_name, file_path, data, file_logger):
             file_logger.exception("Failed to send to cdr.")
 
 
-async def send_label_layer(
+async def process_vector_layer(
     *,
+    tmpdir,
     vector_dir,
     cma,
     feature_layer_objects: List,
     aoi,
     reference_layer_path,
     dilation_size: int = 5,
+    dst_crs: str,
+    dst_nodata: Union[None, float],
+    dst_res_x: int,
+    dst_res_y: int,
     event_id: str,
     file_logger,
 ):
     for feature_layer_info in feature_layer_objects:
-        pev_lyr_path = process_label_raster(
-            vector_dir=vector_dir,
-            cma=cma,
-            feature_layer_info=feature_layer_info,
-            aoi=aoi,
-            reference_layer_path=reference_layer_path,
-            dilation_size=dilation_size,
-        )
         hash_object = hashlib.sha256()
 
         hash_object.update(
@@ -155,30 +154,72 @@ async def send_label_layer(
             + app_settings.SYSTEM_VERSION
         )
 
-        payload = json.dumps(
-            {
-                "cma_id": cma.cma_id,
-                "title": feature_layer_info.get("title", "NeedToSetTitle"),
-                "system": app_settings.SYSTEM,
-                "system_version": app_settings.SYSTEM_VERSION,
-                "transform_methods": feature_layer_info.get("transform_methods"),
-                "label_raster": feature_layer_info.get("label_raster", False),
-                "raw_data_info": [
+        if feature_layer_info.get("label_raster", False):
+            # this is a label raster so fill as binary 1/0s in cells
+            pev_lyr_path = process_label_raster(
+                vector_dir=vector_dir,
+                cma=cma,
+                feature_layer_info=feature_layer_info,
+                aoi=aoi,
+                reference_layer_path=reference_layer_path,
+                dilation_size=dilation_size,
+            )
+
+            payload = json.dumps(
+                {
+                    "cma_id": cma.cma_id,
+                    "title": feature_layer_info.get("title", "NeedToSetTitle"),
+                    "system": app_settings.SYSTEM,
+                    "system_version": app_settings.SYSTEM_VERSION,
+                    "transform_methods": feature_layer_info.get("transform_methods"),
+                    "label_raster": feature_layer_info.get("label_raster", False),
+                    "raw_data_info": [
+                        {"id": x.get("id"), "raw_data_type": x.get("raw_data_type")}
+                        for x in feature_layer_info.get("evidence_features", [])
+                    ],
+                    "extra_geometries": feature_layer_info.get("extra_geometries", []),
+                    "event_id": event_id,
+                }
+            )
+            logger.info(f"payload {payload}")
+            logger.info("Finished")
+            await post_results(
+                file_name=f"{hex_dig}.tif",
+                file_path=pev_lyr_path,
+                data=payload,
+                file_logger=file_logger,
+            )
+        else:
+            # this is a vector payload we need to create into a zip and process
+            # create a zip of my features.
+            gdf = vector_features_to_gdf(feature_layer_info, cma)
+
+            output_folder = os.path.join(tmpdir, "output_shapefile")
+            shapefile_path = os.path.join(output_folder, "my_shapefile.shp")
+            os.makedirs(output_folder, exist_ok=True)
+
+            gdf.to_file(shapefile_path)
+
+            feature_layer_info["local_file_path"] = Path(output_folder)
+
+            await process_vector_folder(
+                layer=feature_layer_info,
+                aoi=aoi,
+                reference_layer_path=reference_layer_path,
+                cma_id=cma.cma_id,
+                dst_crs=dst_crs,
+                dst_nodata=dst_nodata,
+                dst_res_x=dst_res_x,
+                dst_res_y=dst_res_y,
+                event_id=event_id,
+                raw_data_info=[
                     {"id": x.get("id"), "raw_data_type": x.get("raw_data_type")}
                     for x in feature_layer_info.get("evidence_features", [])
                 ],
-                "extra_geometries": feature_layer_info.get("extra_geometries", []),
-                "event_id": event_id,
-            }
-        )
-        logger.info(f"payload {payload}")
-        logger.info("Finished")
-        await post_results(
-            file_name=f"{hex_dig}.tif",
-            file_path=pev_lyr_path,
-            data=payload,
-            file_logger=file_logger,
-        )
+                extra_geometries=feature_layer_info.get("extra_geometries", []),
+                file_name=f"{hex_dig}",
+                file_logger=file_logger,
+            )
 
 
 async def preprocess_evidence_layers(
@@ -193,7 +234,6 @@ async def preprocess_evidence_layers(
     event_id: str,
     file_logger,
 ) -> List[Path]:
-    pev_lyr_paths = []
     for idx, layer in tqdm(enumerate(evidence_layers)):
         try:
             hash_obj = hashlib.md5()
@@ -210,7 +250,7 @@ async def preprocess_evidence_layers(
                 layer.get("data_source", {}).get("data_source_id", "").encode("utf-8")
             )
 
-            hex_dig = (
+            file_name = (
                 str(hex_digest)
                 + "_"
                 + str(hash_obj2)
@@ -254,53 +294,119 @@ async def preprocess_evidence_layers(
                 )
 
                 await post_results(
-                    file_name=f"{hex_dig}.tif",
+                    file_name=f"{file_name}.tif",
                     file_path=pev_lyr_path,
                     data=payload,
                     file_logger=file_logger,
                 )
 
             elif Path(layer.get("local_file_path")).suffix == ".zip":
-                pev_lyr_path = preprocess_vector(
-                    layer=layer.get("local_file_path"),
+                await process_vector_folder(
+                    layer=layer,
                     aoi=aoi,
                     reference_layer_path=reference_layer_path,
+                    cma_id=cma_id,
                     dst_crs=dst_crs,
                     dst_nodata=dst_nodata,
                     dst_res_x=dst_res_x,
                     dst_res_y=dst_res_y,
-                    transform_methods=evidence_layers[idx].get("transform_methods"),
-                )
-                payload = json.dumps(
-                    {
-                        "raw_data_info": [
-                            {
-                                "id": layer.get("data_source", {}).get(
-                                    "data_source_id"
-                                ),
-                                "raw_data_type": "vector",
-                            }
-                        ],
-                        "extra_geometries": [],
-                        "cma_id": cma_id,
-                        "title": layer.get("title", "NeedToSetTitle"),
-                        "system": app_settings.SYSTEM,
-                        "system_version": app_settings.SYSTEM_VERSION,
-                        "transform_methods": layer.get("transform_methods", []),
-                        "label_raster": layer.get("label_raster", False),
-                        "event_id": event_id,
-                    }
-                )
-
-                await post_results(
-                    file_name=f"{hex_dig}.tif",
-                    file_path=pev_lyr_path,
-                    data=payload,
+                    event_id=event_id,
+                    raw_data_info=[
+                        {
+                            "id": layer.get("data_source", {}).get("data_source_id"),
+                            "raw_data_type": "vector",
+                        }
+                    ],
+                    extra_geometries=[],
+                    file_name=file_name,
                     file_logger=file_logger,
                 )
+                # pev_lyr_path = preprocess_vector(
+                #     layer=layer.get("local_file_path"),
+                #     aoi=aoi,
+                #     reference_layer_path=reference_layer_path,
+                #     dst_crs=dst_crs,
+                #     dst_nodata=dst_nodata,
+                #     dst_res_x=dst_res_x,
+                #     dst_res_y=dst_res_y,
+                #     transform_methods=evidence_layers[idx].get("transform_methods"),
+                # )
+                # payload = json.dumps(
+                #     {
+                #         "raw_data_info": [
+                #             {
+                #                 "id": layer.get("data_source", {}).get(
+                #                     "data_source_id"
+                #                 ),
+                #                 "raw_data_type": "vector",
+                #             }
+                #         ],
+                #         "extra_geometries": [],
+                #         "cma_id": cma_id,
+                #         "title": layer.get("title", "NeedToSetTitle"),
+                #         "system": app_settings.SYSTEM,
+                #         "system_version": app_settings.SYSTEM_VERSION,
+                #         "transform_methods": layer.get("transform_methods", []),
+                #         "label_raster": layer.get("label_raster", False),
+                #         "event_id": event_id,
+                #     }
+                # )
 
-            pev_lyr_paths.append(pev_lyr_path)
+                # await post_results(
+                #     file_name=f"{hex_dig}.tif",
+                #     file_path=pev_lyr_path,
+                #     data=payload,
+                #     file_logger=file_logger,
+                # )
+
         except Exception:
             file_logger.exception(f"ERROR processing layer: {layer}")
 
-    return pev_lyr_paths
+    return
+
+
+async def process_vector_folder(
+    layer,
+    aoi: Path,
+    reference_layer_path: Path,
+    cma_id: str,
+    dst_crs: str,
+    dst_nodata: Union[None, float],
+    dst_res_x: int,
+    dst_res_y: int,
+    event_id: str,
+    raw_data_info: list,
+    extra_geometries: list,
+    file_name: str,
+    file_logger,
+):
+    pev_lyr_path = preprocess_vector(
+        layer=layer.get("local_file_path"),
+        aoi=aoi,
+        reference_layer_path=reference_layer_path,
+        dst_crs=dst_crs,
+        dst_nodata=dst_nodata,
+        dst_res_x=dst_res_x,
+        dst_res_y=dst_res_y,
+        transform_methods=layer.get("transform_methods"),
+    )
+    payload = json.dumps(
+        {
+            "raw_data_info": raw_data_info,
+            "extra_geometries": extra_geometries,
+            "cma_id": cma_id,
+            "title": layer.get("title", "NeedToSetTitle"),
+            "system": app_settings.SYSTEM,
+            "system_version": app_settings.SYSTEM_VERSION,
+            "transform_methods": layer.get("transform_methods", []),
+            "label_raster": layer.get("label_raster", False),
+            "event_id": event_id,
+        }
+    )
+
+    await post_results(
+        file_name=f"{file_name}.tif",
+        file_path=pev_lyr_path,
+        data=payload,
+        file_logger=file_logger,
+    )

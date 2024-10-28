@@ -12,7 +12,7 @@ from mpm_input_preprocessing.common.utils_cdr import (
     download_reference_layer,
     download_evidence_layers,
     preprocess_evidence_layers,
-    send_label_layer,
+    process_vector_layer,
 )
 from cdr_schemas.cdr_responses.prospectivity import (
     CriticalMineralAssessment,
@@ -39,7 +39,7 @@ async def preprocess(
     """
 
     logger.info("Start preprocess...")
-
+    logger.info(feature_layer_objects)
     # create directory where to save the processed layers
     # data_dir = Path("./data") / Path(cma.cma_id)
     # os.makedirs(data_dir, exist_ok=True)
@@ -84,11 +84,16 @@ async def preprocess(
                 x.model_dump(mode="json") for x in feature_layer_objects
             ]
 
-            await send_label_layer(
+            await process_vector_layer(
+                tmpdir=tmpdir,
                 vector_dir=vector_dir,
                 cma=cma,
                 feature_layer_objects=dumped_feature_layers,
                 aoi=aoi_geopkg_path,
+                dst_crs=cma.crs,
+                dst_nodata=np.nan,
+                dst_res_x=cma.resolution[0],
+                dst_res_y=cma.resolution[1],
                 reference_layer_path=reference_layer_path,
                 event_id=event_id,
                 file_logger=file_logger,
