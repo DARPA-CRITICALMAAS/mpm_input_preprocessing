@@ -14,9 +14,27 @@ from rasterio.features import rasterize
 from typing import List, Optional, Union, Literal
 from shapely.geometry import shape
 
-from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute
+from cdr_schemas.prospectivity_input import ScalingType, TransformMethod
 
 logger: Logger = logging.getLogger(__name__)
+
+
+def vector_features_to_gdf(feature_layer_info, cma):
+    geometry = [
+        shape(feature.get("geom"))
+        for feature in feature_layer_info.get("evidence_features", [])
+    ]
+
+    extras = [
+        shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
+    ]
+    gdf = gpd.GeoDataFrame(
+        {"feature_epsg_4326": geometry + extras},
+        geometry="feature_epsg_4326",
+        crs="EPSG:4326",
+    )
+    gdf = gdf.to_crs(cma.crs)
+    return gdf
 
 
 def process_label_raster(
@@ -34,24 +52,14 @@ def process_label_raster(
     aligned_file = vector_dir / "_aligned.tif"
     dilated_file = vector_dir / "_processed.tif"
 
-    geometry = [
-        shape(feature.get("geom"))
-        for feature in feature_layer_info.get("evidence_features", [])
-    ]
-    extras = [
-        shape(feature) for feature in feature_layer_info.get("extra_geometries", [])
-    ]
-    gdf = gpd.GeoDataFrame(
-        {"feature_epsg_4326": geometry + extras},
-        geometry="feature_epsg_4326",
-        crs="EPSG:4326",
-    )
-    gdf = gdf.to_crs(cma.crs)
+    gdf = vector_features_to_gdf(feature_layer_info, cma)
 
     aoi_gdf = gpd.read_file(aoi)
+
     clipped_gdf = gpd.clip(gdf, aoi_gdf, keep_geom_type=True)
 
     clipped_gdf.to_file(warped_shp_file)
+
     vector_to_raster(
         src_vector_path=warped_shp_file,
         dst_raster_path=rasterized_file,
@@ -60,15 +68,18 @@ def process_label_raster(
         fill_value=0.0,
         aoi_path=aoi,
     )
+
     clip_raster(
         src_raster_path=rasterized_file, dst_raster_path=clipped_file, aoi_path=aoi
     )
+
     align_rasters(
         src_raster_path=clipped_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
         resampling=rasterio.warp.Resampling.nearest,
     )
+
     dilate_raster(
         src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
@@ -141,7 +152,7 @@ def preprocess_raster(
         "impute_window_size": None,
         "scaling": scaling_type,
     }
-    logger.info(transform_methods)
+
     for method in transform_methods:
         if method in [x.value for x in TransformMethod]:
             transform_methods_dict["transform"] = method
@@ -279,14 +290,15 @@ def preprocess_vector(
         "impute_window_size": None,
         "scaling": scaling_type,
     }
+
     for method in transform_methods:
-        if isinstance(method, TransformMethod):
-            transform_methods_dict["transform"] = method.value
-        elif isinstance(method, Impute):
-            transform_methods_dict["impute_method"] = method.impute_method.value
-            transform_methods_dict["impute_window_size"] = method.window_size
-        elif isinstance(method, ScalingType):
-            transform_methods_dict["scaling"] = method.value
+        if method in [x.value for x in TransformMethod]:
+            transform_methods_dict["transform"] = method
+        elif method in [x.value for x in ScalingType]:
+            transform_methods_dict["scaling"] = method
+        elif isinstance(method, dict):
+            transform_methods_dict["impute_method"] = method.get("impute_method")
+            transform_methods_dict["impute_window_size"] = method.get("window_size")
         else:
             raise ValueError("Unknown method")
 
@@ -324,6 +336,7 @@ def preprocess_vector(
         burn_value=burn_value,
         fill_value=fill_value,
         dst_nodata=dst_nodata,
+        aoi_path=aoi,
     )
     proximity_raster(
         src_raster_path=rasterized_file,
@@ -719,9 +732,9 @@ def vector_to_raster(
     width = int((maxx - minx) / dst_res_x)
     height = int((maxy - miny) / dst_res_y)
     transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
-
     # Rasterize the geometries
     shapes = ((geom, burn_value) for geom in gdf.geometry)
+
     raster = rasterize(
         shapes=shapes,
         out_shape=(height, width),
