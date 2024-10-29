@@ -14,7 +14,7 @@ from rasterio.features import rasterize
 from typing import List, Optional, Union, Literal
 from shapely.geometry import shape
 
-from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, Impute
+from cdr_schemas.prospectivity_input import ScalingType, TransformMethod
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -290,14 +290,15 @@ def preprocess_vector(
         "impute_window_size": None,
         "scaling": scaling_type,
     }
+
     for method in transform_methods:
-        if isinstance(method, TransformMethod):
-            transform_methods_dict["transform"] = method.value
-        elif isinstance(method, Impute):
-            transform_methods_dict["impute_method"] = method.impute_method.value
-            transform_methods_dict["impute_window_size"] = method.window_size
-        elif isinstance(method, ScalingType):
-            transform_methods_dict["scaling"] = method.value
+        if method in [x.value for x in TransformMethod]:
+            transform_methods_dict["transform"] = method
+        elif method in [x.value for x in ScalingType]:
+            transform_methods_dict["scaling"] = method
+        elif isinstance(method, dict):
+            transform_methods_dict["impute_method"] = method.get("impute_method")
+            transform_methods_dict["impute_window_size"] = method.get("window_size")
         else:
             raise ValueError("Unknown method")
 

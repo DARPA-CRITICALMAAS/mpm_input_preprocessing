@@ -75,7 +75,7 @@ async def preprocess(
             event_id=event_id,
             file_logger=file_logger,
         )
-
+        logger.info("Check for vector payload")
         if len(feature_layer_objects) > 0:
             dumped_feature_layers = [
                 x.model_dump(mode="json") for x in feature_layer_objects

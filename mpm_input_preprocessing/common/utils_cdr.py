@@ -12,7 +12,7 @@ import boto3
 from logging import Logger
 import json
 import hashlib
-
+from uuid import uuid4
 
 from .utils_preprocessing import (
     preprocess_raster,
@@ -49,7 +49,13 @@ def download_reference_layer(cma, dst_dir: Path = Path("./data")) -> Path:
     return dst_path
 
 
+def _uuid():
+    return uuid4().hex
+
+
 def download_evidence_layer(title: str, s3_key: str, dst_dir: Path) -> Path:
+    if not title:
+        title = _uuid()
     local_file = f"{title}{Path(s3_key).suffix}"
     dst_path = dst_dir / local_file
     download_file(s3_key, dst_path)
@@ -97,6 +103,7 @@ def download_evidence_layers(
             with zipfile.ZipFile(ev_lyr_path, "r") as zip_ref:
                 zip_ref.extractall(ev_lyr_path.parent / ev_lyr_path.stem)
         ev_lyr["local_file_path"] = ev_lyr_path
+        logger.info(ev_lyr)
     return evidence_layers
 
 
@@ -249,11 +256,12 @@ async def preprocess_evidence_layers(
             hash_obj2.update(
                 layer.get("data_source", {}).get("data_source_id", "").encode("utf-8")
             )
+            hex_digest2 = hash_obj2.hexdigest()
 
             file_name = (
                 str(hex_digest)
                 + "_"
-                + str(hash_obj2)
+                + str(hex_digest2)
                 + "_"
                 + app_settings.SYSTEM
                 + "_"
@@ -301,6 +309,7 @@ async def preprocess_evidence_layers(
                 )
 
             elif Path(layer.get("local_file_path")).suffix == ".zip":
+                logger.info("file path has a zip")
                 await process_vector_folder(
                     layer=layer,
                     aoi=aoi,
@@ -321,7 +330,8 @@ async def preprocess_evidence_layers(
                     file_name=file_name,
                     file_logger=file_logger,
                 )
-
+            else:
+                raise Exception(f"Didn't process file {layer.get('local_file_path')}")
         except Exception:
             file_logger.exception(f"ERROR processing layer: {layer}")
 
