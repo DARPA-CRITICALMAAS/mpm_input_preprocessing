@@ -99,7 +99,7 @@ def download_evidence_layers(
             dst_dir=ev_lyrs_path,
         )
         # if ev_lyr_path.suffix == ".zip":
-        if ev_lyr.get("data_source",{}).get("format","") =="shp":
+        if ev_lyr.get("data_source", {}).get("format", "") == "shp":
             os.makedirs(ev_lyr_path.parent / ev_lyr_path.stem, exist_ok=True)
             with zipfile.ZipFile(ev_lyr_path, "r") as zip_ref:
                 zip_ref.extractall(ev_lyr_path.parent / ev_lyr_path.stem)
@@ -258,7 +258,7 @@ async def preprocess_evidence_layers(
                 layer.get("data_source", {}).get("data_source_id", "").encode("utf-8")
             )
             hex_digest2 = hash_obj2.hexdigest()
-
+            # default name
             file_name = (
                 str(hex_digest)
                 + "_"
@@ -268,8 +268,11 @@ async def preprocess_evidence_layers(
                 + "_"
                 + app_settings.SYSTEM_VERSION
             )
-            if layer.get("data_source",{}).get("format","")=="tif":
-            # if Path(layer.get("local_file_path")).suffix == ".tif":
+            if layer.get("title"):
+                file_name = layer.get("title", "")
+
+            if layer.get("data_source", {}).get("format", "") == "tif":
+                # if Path(layer.get("local_file_path")).suffix == ".tif":
                 pev_lyr_path = preprocess_raster(
                     layer=layer.get("local_file_path"),
                     aoi=aoi,
@@ -308,8 +311,8 @@ async def preprocess_evidence_layers(
                     data=payload,
                     file_logger=file_logger,
                 )
-            elif layer.get("data_source",{}).get("format","")=="shp":
-            # elif Path(layer.get("local_file_path")).suffix == ".zip":
+            elif layer.get("data_source", {}).get("format", "") == "shp":
+                # elif Path(layer.get("local_file_path")).suffix == ".zip":
                 logger.info("file path has a zip")
                 await process_vector_folder(
                     layer=layer,

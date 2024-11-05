@@ -44,7 +44,7 @@ async def event_handler(evt: Event):
                 logger.info("Received PING!")
             case Event(event="prospectivity_evidence_layers.process"):
                 logger.info("Received preprocess event payload!")
-                logger.info(evt.payload)
+                # logger.info(evt.payload)
                 evidence_layer_objects_formated = []
                 for x in evt.payload.get("evidence_layers"):
                     for i, method in enumerate(x.get("transform_methods")):
