@@ -13,6 +13,7 @@ from logging import Logger
 import json
 import hashlib
 from uuid import uuid4
+import re
 
 from .utils_preprocessing import (
     preprocess_raster,
@@ -29,6 +30,15 @@ auth = {
     "Authorization": app_settings.cdr_bearer_token,
 }
 
+
+def clean_filename(title):
+    title = title.replace(" ", "_").replace(".", "_")
+    
+    title = re.sub(r'[^\w\-.]', '', title)
+    
+    title = title[:100]
+    
+    return title
 
 def create_aoi_geopkg(cma, dst_dir: Path = Path("./data")) -> Path:
     # Creating the AOI geopackage
@@ -91,8 +101,11 @@ def download_evidence_layers(
 ) -> List[Path]:
     # sets evidence layers location
     ev_lyrs_path = dst_dir
-
+    count = 0
     for ev_lyr in tqdm(evidence_layers):
+        count += 1
+        logger.info(f"downloading layer {count}")
+
         ev_lyr_path = download_evidence_layer(
             title=ev_lyr.get("data_source", {}).get("evidence_layer_raster_prefix"),
             s3_key=parse_s3_url(ev_lyr.get("data_source", {}).get("download_url"))[1],
@@ -104,7 +117,6 @@ def download_evidence_layers(
             with zipfile.ZipFile(ev_lyr_path, "r") as zip_ref:
                 zip_ref.extractall(ev_lyr_path.parent / ev_lyr_path.stem)
         ev_lyr["local_file_path"] = ev_lyr_path
-        logger.info(ev_lyr)
     return evidence_layers
 
 
@@ -269,7 +281,8 @@ async def preprocess_evidence_layers(
                 + app_settings.SYSTEM_VERSION
             )
             if layer.get("title"):
-                file_name = layer.get("title", "")
+                
+                file_name = clean_filename(layer.get("title", ""))
 
             if layer.get("data_source", {}).get("format", "") == "tif":
                 # if Path(layer.get("local_file_path")).suffix == ".tif":
