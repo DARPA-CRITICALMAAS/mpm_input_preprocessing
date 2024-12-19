@@ -5,7 +5,7 @@ import geopandas as gpd
 import logging
 from logging import Logger
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import distance_transform_edt, gaussian_filter
 from pathlib import Path
 from rasterio.warp import reproject
 from rasterio.fill import fillnodata
@@ -14,7 +14,7 @@ from rasterio.features import rasterize
 from typing import List, Optional, Union, Literal
 from shapely.geometry import shape
 
-from cdr_schemas.prospectivity_input import ScalingType, TransformMethod
+from cdr_schemas.prospectivity_input import ScalingType, TransformMethod, ImputeMethod, WormsProcessingMethod
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -48,7 +48,8 @@ def process_label_raster(
 ):
     warped_shp_file = vector_dir / "_warped.shp"
     rasterized_file = vector_dir / "_rasterized.tif"
-    clipped_file = vector_dir / "_clipped.tif"
+    clipped_na_file = vector_dir / "_clipped2na.tif" # clipping off water bodies in the North America
+    clipped_aoi_file = vector_dir / "_clipped2aoi.tif"
     aligned_file = vector_dir / "_aligned.tif"
     dilated_file = vector_dir / "_processed.tif"
 
@@ -68,18 +69,18 @@ def process_label_raster(
         fill_value=0.0,
         aoi_path=aoi,
     )
-
-    clip_raster(
-        src_raster_path=rasterized_file, dst_raster_path=clipped_file, aoi_path=aoi
+    clip_raster(# clipping off water bodies in the North America
+        src_raster_path=rasterized_file, dst_raster_path=clipped_na_file, aoi_path=Path('north_america_EPSG4326.gpkg')
     )
-
+    clip_raster( # clipping to the aoi
+        src_raster_path=clipped_na_file, dst_raster_path=clipped_aoi_file, aoi_path=aoi
+    )
     align_rasters(
-        src_raster_path=clipped_file,
+        src_raster_path=clipped_aoi_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
         resampling=rasterio.warp.Resampling.nearest,
     )
-
     dilate_raster(
         src_raster_path=aligned_file,
         dst_raster_path=dilated_file,
@@ -93,7 +94,8 @@ def process_label_raster(
         raster_data = src.read(1)
 
     num_of_deposits = np.count_nonzero(raster_data == 1)
-    logger.info(f"num_of_deposits:{num_of_deposits}")
+    num_of_pixels = np.count_nonzero(~np.isnan(raster_data))
+    logger.info(f"num. of deposits:{num_of_deposits} | num. of pixels:{num_of_pixels}")
 
     return dilated_file
 
@@ -158,22 +160,24 @@ def preprocess_raster(
             transform_methods_dict["transform"] = method
         elif method in [x.value for x in ScalingType]:
             transform_methods_dict["scaling"] = method
-        elif isinstance(method, dict):
+        elif method in [x.value for x in ImputeMethod]:
             transform_methods_dict["impute_method"] = method.get("impute_method")
             transform_methods_dict["impute_window_size"] = method.get("window_size")
+        elif method in [x.value for x in WormsProcessingMethod]:
+            continue
         else:
             raise ValueError("Unknown method")
 
-    formatted_file = layer.parent / (layer.stem + "_formatted" + layer.suffix)
-    warped_file = layer.parent / (layer.stem + "_warped" + layer.suffix)
-    imputed_file = layer.parent / (layer.stem + "_imputed" + layer.suffix)
-    clipped_file = layer.parent / (layer.stem + "_clipped" + layer.suffix)
-    aligned_file = layer.parent / (layer.stem + "_aligned" + layer.suffix)
-    olr_file = layer.parent / (layer.stem + "_olr" + layer.suffix)
-    scaled_file = layer.parent / (layer.stem + "_scaled" + layer.suffix)
-    if transform_methods_dict["transform"]:
-        transform_file = layer.parent / (layer.stem + "_transformed" + layer.suffix)
-    dilated_file = layer.parent / (layer.stem + "_processed" + layer.suffix)
+    formatted_file =    layer.parent / (layer.stem + "_formatted" + layer.suffix)
+    warped_file =       layer.parent / (layer.stem + "_warped" + layer.suffix)
+    imputed_file =      layer.parent / (layer.stem + "_imputed" + layer.suffix)
+    clipped_na_file =   layer.parent / (layer.stem + "_clipped2na" + layer.suffix)
+    clipped_aoi_file =  layer.parent / (layer.stem + "_clipped2aoi" + layer.suffix)
+    aligned_file =      layer.parent / (layer.stem + "_aligned" + layer.suffix)
+    olr_file =          layer.parent / (layer.stem + "_olr" + layer.suffix)
+    scaled_file =       layer.parent / (layer.stem + "_scaled" + layer.suffix)
+    transform_file =    layer.parent / (layer.stem + "_transformed" + layer.suffix)
+    dilated_file =      layer.parent / (layer.stem + "_processed" + layer.suffix)
 
     format_nodata_crs(
         src_raster_path=layer,
@@ -197,11 +201,16 @@ def preprocess_raster(
         smoothing_iterations=imputation_smoothing_iterations,
         label_raster=False,
     )
-    clip_raster(
-        src_raster_path=imputed_file, dst_raster_path=clipped_file, aoi_path=str(aoi)
+    clip_raster( # clipping off water bodies in the North America
+        src_raster_path=imputed_file,
+        dst_raster_path=clipped_na_file,
+        aoi_path=Path('north_america_EPSG4326.gpkg')
+    )
+    clip_raster( # clipping to the aoi
+        src_raster_path=clipped_na_file, dst_raster_path=clipped_aoi_file, aoi_path=str(aoi)
     )
     align_rasters(
-        src_raster_path=clipped_file,
+        src_raster_path=clipped_aoi_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
         resampling=align_resampling_method,
@@ -252,6 +261,8 @@ def preprocess_vector(
     dst_res_x: float,
     dst_res_y: float,
     transform_methods: List,
+    worms_proprocess_type: Literal['proximity', 'density'] = 'proximity',
+    density_sigma: float = 0.0,
     burn_value: float = 1.0,
     fill_value: float = np.nan,
     align_resampling_method=rasterio.warp.Resampling.bilinear,
@@ -263,7 +274,7 @@ def preprocess_vector(
     scale_max_value: float = 1.0,
 ) -> Path:
     """
-    Preprocess a raster layer by warping, rasterezing, calculating proximity raster, clipping, aligning, dilating, removing outliers, and scaling.
+    Preprocess a raster layer by warping, rasterezing, calculating proximity/density raster, clipping, aligning, dilating, removing outliers, and scaling.
 
     Parameters:
     - layer (str): Path to the input raster file.
@@ -273,6 +284,8 @@ def preprocess_vector(
     - dst_nodata (float): NoData value for the output raster.
     - dst_res_x, dst_res_y (float): Resolution of the output raster.
     - transform_methods (List): List of preprocessing methods to apply.
+    - worms_proprocess_type (str): The type of preprocessing to apply. Options are 'proximity' and 'density' (default is 'proximity').
+    - density_sigma (float): Sigma value for the kernel density raster (default is 0.0).
     - burn_value (float): Value to burn in the raster (default is 1.0).
     - fill_value (float): Value to fill the raster with (default is np.nan).
     - align_resampling_method (rasterio.warp.Resampling): Resampling method to use for aligning.
@@ -289,6 +302,8 @@ def preprocess_vector(
         "impute_method": None,
         "impute_window_size": None,
         "scaling": scaling_type,
+        "worms_process_type": worms_proprocess_type,
+        "worms_process_sigma": density_sigma,
     }
 
     for method in transform_methods:
@@ -296,9 +311,12 @@ def preprocess_vector(
             transform_methods_dict["transform"] = method
         elif method in [x.value for x in ScalingType]:
             transform_methods_dict["scaling"] = method
-        elif isinstance(method, dict):
+        elif method in [x.value for x in ImputeMethod]:
             transform_methods_dict["impute_method"] = method.get("impute_method")
             transform_methods_dict["impute_window_size"] = method.get("window_size")
+        elif method in [x.value for x in WormsProcessingMethod]:
+            transform_methods_dict["worms_process_type"] = method.get("process_method")
+            transform_methods_dict["worms_process_sigma"] = method.get("sigma")
         else:
             raise ValueError("Unknown method")
 
@@ -311,43 +329,65 @@ def preprocess_vector(
     warped_shp_file = (
         layer.parent / layer.stem / (shp_file.stem + "_warped" + shp_file.suffix)
     )
-    rasterized_file = layer.parent / (layer.stem + "_rasterized.tif")
-    proximity_file = layer.parent / (layer.stem + "_proximity" + rasterized_file.suffix)
-    clipped_file = layer.parent / (layer.stem + "_clipped" + rasterized_file.suffix)
-    aligned_file = layer.parent / (layer.stem + "_aligned" + rasterized_file.suffix)
-    olr_file = layer.parent / (layer.stem + "_olr" + rasterized_file.suffix)
-    scaled_file = layer.parent / (layer.stem + "_scaled" + rasterized_file.suffix)
-    if transform_methods_dict["transform"]:
-        transform_file = layer.parent / (
-            layer.stem + "_transformed" + rasterized_file.suffix
-        )
-    dilated_file = layer.parent / (layer.stem + "_processed" + rasterized_file.suffix)
+    rasterized_file =   layer.parent / (layer.stem + "_rasterized.tif")
+    proximity_file =    layer.parent / (layer.stem + "_proximity" + rasterized_file.suffix)
+    density_file =      layer.parent / (layer.stem + "_density.tif")
+    clipped_na_file =   layer.parent / (layer.stem + "_clipped2na" + rasterized_file.suffix)
+    clipped_aoi_file =  layer.parent / (layer.stem + "_clipped2aoi" + rasterized_file.suffix)
+    aligned_file =      layer.parent / (layer.stem + "_aligned" + rasterized_file.suffix)
+    olr_file =          layer.parent / (layer.stem + "_olr" + rasterized_file.suffix)
+    scaled_file =       layer.parent / (layer.stem + "_scaled" + rasterized_file.suffix)
+    transform_file =    layer.parent / (layer.stem + "_transformed" + rasterized_file.suffix)
+    dilated_file =      layer.parent / (layer.stem + "_processed" + rasterized_file.suffix)
 
     warp_vector(
         src_vector_path=shp_file,
         dst_vector_path=warped_shp_file,
         dst_crs=dst_crs,
     )
-    vector_to_raster(
-        src_vector_path=warped_shp_file,
-        dst_raster_path=rasterized_file,
-        dst_res_x=dst_res_x,
-        dst_res_y=dst_res_y,
-        burn_value=burn_value,
-        fill_value=fill_value,
-        dst_nodata=dst_nodata,
-        aoi_path=aoi,
-    )
-    proximity_raster(
-        src_raster_path=rasterized_file,
-        dst_raster_path=proximity_file,
-        src_burn_value=burn_value,
-    )
-    clip_raster(
-        src_raster_path=proximity_file, dst_raster_path=clipped_file, aoi_path=str(aoi)
+    if transform_methods_dict['worms_process_type'] == 'proximity':
+        vector_to_raster(
+            src_vector_path=warped_shp_file,
+            dst_raster_path=rasterized_file,
+            dst_res_x=dst_res_x,
+            dst_res_y=dst_res_y,
+            burn_value=burn_value,
+            fill_value=fill_value,
+            dst_nodata=dst_nodata,
+            aoi_path=aoi,
+        )
+        proximity_raster(
+            src_raster_path=rasterized_file,
+            dst_raster_path=proximity_file,
+            src_burn_value=burn_value,
+        )
+        clip_raster( # clipping off water bodies in the North America
+            src_raster_path=proximity_file,
+            dst_raster_path=clipped_na_file,
+            aoi_path=Path('north_america_EPSG4326.gpkg')
+        )
+    elif transform_methods_dict['worms_process_type'] == 'density':
+        kernel_density_raster(
+            src_vector_path=warped_shp_file,
+            dst_raster_path=density_file,
+            dst_res_x=dst_res_x,
+            dst_res_y=dst_res_y,
+            dst_nodata=dst_nodata,
+            sigma=transform_methods_dict['worms_process_sigma'],
+        )
+        clip_raster( # clipping off water bodies in the North America
+            src_raster_path=density_file,
+            dst_raster_path=clipped_na_file,
+            aoi_path=Path('north_america_EPSG4326.gpkg')
+        )
+    else:
+        raise ValueError("Unknown preprocess type.")
+
+    clip_raster( # clipping to the aoi
+        src_raster_path=clipped_na_file, dst_raster_path=clipped_aoi_file, aoi_path=str(aoi)
     )
     align_rasters(
-        src_raster_path=clipped_file,
+        src_raster_path=clipped_aoi_file,
         dst_raster_path=aligned_file,
         reference_raster_path=reference_layer_path,
         resampling=align_resampling_method,
@@ -715,8 +755,8 @@ def vector_to_raster(
     Parameters:
     - vector_path (str): Path to the input vector file.
     - output_raster (str): Path to save the output raster file.
-    - x_res (float): Desired x resolution of the output raster.
-    - y_res (float): Desired y resolution of the output raster.
+    - dst_res_x (float): Desired x resolution of the output raster.
+    - dst_res_y (float): Desired y resolution of the output raster.
     - burn_value (float): Value to burn in the raster (default is 1.0).
     - fill_value (float): Value to fill the raster with (default is None).
     - dst_nodata (float): NoData value for the output raster (default is np.nan).
@@ -842,3 +882,59 @@ def transform_raster(
 
     with rasterio.open(dst_raster_path, "w", **metadata) as dst:
         dst.write(transformed_data.astype(rasterio.float32), 1)
+
+
+def kernel_density_raster(
+    src_vector_path: Path,
+    dst_raster_path: Path,
+    dst_res_x: float = 500.0,
+    dst_res_y: float = 500.0,
+    dst_nodata: float = np.nan,
+    sigma: float = 0.0,
+) -> None:
+    """
+    Convert a vector layer to a raster density layer using a Gaussian kernel. Note: If sigma=0.0, the output raster will be a simple count of vector points per rasterizing pixel, no smoothing.
+
+    Parameters:
+    - src_raster_path (str): Path to the input raster file.
+    - dst_raster_path (str): Path to save the output raster file.
+    - dst_res_x (float): Desired x resolution of the output raster (default is 500.0).
+    - dst_res_y (float): Desired y resolution of the output raster (default is 500.0).
+    - dst_nodata (float): NoData value for the output raster. (default is np.nan).
+    - sigma (float): Standard deviation for Gaussian kernel. (default is 0.0).
+    """
+    # Load the vector layer
+    gdf = gpd.read_file(src_vector_path)
+
+    # Get bounds and set up raster grid
+    minx, miny, maxx, maxy = gdf.total_bounds
+    width = int((maxx - minx) / dst_res_x)
+    height = int((maxy - miny) / dst_res_y)
+    transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
+
+    # Initialize an empty raster
+    raster = np.zeros((height, width), dtype=np.float32)
+
+    # Convert gdf (points) to raster coordinates and increment density
+    for x, y in gdf.geometry.apply(lambda g: (g.x, g.y)):
+        col, row = ~transform * (x, y)
+        row, col = int(row), int(col)
+        if 0 <= row < height and 0 <= col < width:  # Check bounds
+            raster[row, col] += 1  # Increment raster cell
+
+    raster = gaussian_filter(raster, sigma=sigma)
+
+    # Save the output raster
+    with rasterio.open(
+        dst_raster_path,
+        'w',
+        driver='GTiff',
+        height=height,
+        width=width,
+        count=1,
+        dtype=np.float32,
+        crs=gdf.crs,
+        transform=transform,
+        nodata=dst_nodata
+    ) as dst:
+        dst.write(raster, 1)
