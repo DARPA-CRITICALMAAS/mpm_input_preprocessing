@@ -122,6 +122,7 @@ def preprocess_raster(
     scaling_type: Literal["standard", "minmax", "maxabs"] = "standard",
     scale_min_value: float = 0.0,
     scale_max_value: float = 1.0,
+    na_shape_path: Path = Path('mpm_input_preprocessing/common/north_america_esri102008.gpkg'),
 ) -> Path:
     """
     Preprocess a raster layer by formatting, warping, imputing, clipping, aligning, dilating, removing outliers, and scaling.
@@ -204,7 +205,7 @@ def preprocess_raster(
     clip_raster( # clipping off water bodies in the North America
         src_raster_path=imputed_file,
         dst_raster_path=clipped_na_file,
-        aoi_path=Path('north_america_EPSG4326.gpkg')
+        aoi_path=na_shape_path
     )
     clip_raster( # clipping to the aoi
         src_raster_path=clipped_na_file, dst_raster_path=clipped_aoi_file, aoi_path=str(aoi)
@@ -261,7 +262,7 @@ def preprocess_vector(
     dst_res_x: float,
     dst_res_y: float,
     transform_methods: List,
-    worms_proprocess_type: Literal['proximity', 'density'] = 'proximity',
+    worms_proprocess_type: Literal['proximity', 'density', 'binary'] = 'proximity',
     density_sigma: float = 0.0,
     burn_value: float = 1.0,
     fill_value: float = np.nan,
@@ -272,6 +273,7 @@ def preprocess_vector(
     scaling_type: Literal["standard", "minmax", "maxabs"] = "standard",
     scale_min_value: float = 0.0,
     scale_max_value: float = 1.0,
+    na_shape_path: Path = Path('mpm_input_preprocessing/common/north_america_esri102008.gpkg'),
 ) -> Path:
     """
     Preprocess a raster layer by warping, rasterezing, calculating proximity/density raster, clipping, aligning, dilating, removing outliers, and scaling.
@@ -330,15 +332,15 @@ def preprocess_vector(
         layer.parent / layer.stem / (shp_file.stem + "_warped" + shp_file.suffix)
     )
     rasterized_file =   layer.parent / (layer.stem + "_rasterized.tif")
-    proximity_file =    layer.parent / (layer.stem + "_proximity" + rasterized_file.suffix)
+    proximity_file =    layer.parent / (layer.stem + "_proximity.tif")
     density_file =      layer.parent / (layer.stem + "_density.tif")
-    clipped_na_file =   layer.parent / (layer.stem + "_clipped2na" + rasterized_file.suffix)
-    clipped_aoi_file =  layer.parent / (layer.stem + "_clipped2aoi" + rasterized_file.suffix)
-    aligned_file =      layer.parent / (layer.stem + "_aligned" + rasterized_file.suffix)
-    olr_file =          layer.parent / (layer.stem + "_olr" + rasterized_file.suffix)
-    scaled_file =       layer.parent / (layer.stem + "_scaled" + rasterized_file.suffix)
-    transform_file =    layer.parent / (layer.stem + "_transformed" + rasterized_file.suffix)
-    dilated_file =      layer.parent / (layer.stem + "_processed" + rasterized_file.suffix)
+    clipped_na_file =   layer.parent / (layer.stem + "_clipped2na.tif")
+    clipped_aoi_file =  layer.parent / (layer.stem + "_clipped2aoi.tif")
+    aligned_file =      layer.parent / (layer.stem + "_aligned.tif")
+    olr_file =          layer.parent / (layer.stem + "_olr.tif")
+    scaled_file =       layer.parent / (layer.stem + "_scaled.tif")
+    transform_file =    layer.parent / (layer.stem + "_transformed.tif")
+    dilated_file =      layer.parent / (layer.stem + "_processed.tif")
 
     warp_vector(
         src_vector_path=shp_file,
@@ -364,7 +366,7 @@ def preprocess_vector(
         clip_raster( # clipping off water bodies in the North America
             src_raster_path=proximity_file,
             dst_raster_path=clipped_na_file,
-            aoi_path=Path('north_america_EPSG4326.gpkg')
+            aoi_path=na_shape_path
         )
     elif transform_methods_dict['worms_process_type'] == 'density':
         kernel_density_raster(
@@ -378,7 +380,23 @@ def preprocess_vector(
         clip_raster( # clipping off water bodies in the North America
             src_raster_path=density_file,
             dst_raster_path=clipped_na_file,
-            aoi_path=Path('north_america_EPSG4326.gpkg')
+            aoi_path=na_shape_path
+        )
+    elif transform_methods_dict['worms_process_type'] == 'binary':
+        vector_to_raster(
+            src_vector_path=warped_shp_file,
+            dst_raster_path=rasterized_file,
+            dst_res_x=dst_res_x,
+            dst_res_y=dst_res_y,
+            burn_value=burn_value,
+            fill_value=fill_value,
+            dst_nodata=dst_nodata,
+            aoi_path=aoi,
+        )
+        clip_raster( # clipping off water bodies in the North America
+            src_raster_path=rasterized_file,
+            dst_raster_path=clipped_na_file,
+            aoi_path=na_shape_path
         )
     else:
         raise ValueError("Unknown preprocess type.")
@@ -767,11 +785,18 @@ def vector_to_raster(
     if aoi_path:
         aoi_gdf = gpd.read_file(aoi_path)
 
-    # Get bounds and calculate transform
-    minx, miny, maxx, maxy = aoi_gdf.total_bounds if aoi_path else gdf.total_bounds
-    width = int((maxx - minx) / dst_res_x)
-    height = int((maxy - miny) / dst_res_y)
+        # the larger bounding box of the union of the aoi and the vector file
+        minx_aoi, miny_aoi, maxx_aoi, maxy_aoi = aoi_gdf.total_bounds
+        minx_gdf, miny_gdf, maxx_gdf, maxy_gdf = gdf.total_bounds
+
+        minx, miny, maxx, maxy = (min(minx_aoi, minx_gdf), min(miny_aoi, miny_gdf), max(maxx_aoi, maxx_gdf), max(maxy_aoi, maxy_gdf))
+    else:
+        minx, miny, maxx, maxy = gdf.total_bounds
+
+    width = (maxx - minx) / dst_res_x
+    height = (maxy - miny) / dst_res_y
     transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
+
     # Rasterize the geometries
     shapes = ((geom, burn_value) for geom in gdf.geometry)
 
@@ -787,8 +812,8 @@ def vector_to_raster(
         dst_raster_path,
         "w",
         driver="GTiff",
-        height=height,
-        width=width,
+        height=int(height),
+        width=int(width),
         count=1,
         dtype=rasterio.float32,
         crs=gdf.crs,
